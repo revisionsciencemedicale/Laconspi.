@@ -5571,7 +5571,7 @@ els.reviewList.appendChild(head);
       els.inputUsername.type = visible ? 'password' : 'text';
       btnToggleUsername.classList.toggle('is-open', !visible);
       btnToggleUsername.textContent = visible ? '👁️‍🗨️' : '👁️';
-      btnToggleUsername.setAttribute('aria-label', visible ? 'Afficher le nom d’utilisateur' : 'Masquer le nom d’utilisateur');
+      btnToggleUsername.setAttribute('aria-label', visible ? 'Afficher le code d’accès' : 'Masquer le code d’accès');
       els.inputUsername.focus();
     });
   }
@@ -5592,7 +5592,7 @@ els.reviewList.appendChild(head);
       try {
         const username = (els.inputUsername?.value || "").trim();
         if (!username) {
-          const msg = "Veuillez entrer votre nom d’utilisateur avant de vous connecter.";
+          const msg = "Veuillez entrer votre code d’accès avant de vous connecter.";
           if (els.codeError) {
             els.codeError.textContent = msg;
             els.codeError.style.display = "block";
