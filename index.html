@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Revision Science Medicale</title>
+    <meta name="description" content="Un site de quiz pour réviser entre étudiants." />
+    <link rel="stylesheet" href="./style.css" />
+    <!-- Evite l'erreur console sur /favicon.ico en fournissant une icône inline -->
+    <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/wcAAgMBgF+YVb0AAAAASUVORK5CYII=" />
+  </head>
+  <body>
+    <div class="bg"></div>
+
+    <section class="card code-screen" id="screenCode">
+      <div class="hero">
+        <img src="./logo.png" alt="Revision Science Medicale" class="hero__img" onerror="this.style.display='none'" />
+      </div>
+      <h1 class="h1">Connexion</h1>
+      <p class="muted">Entre ton code pour accéder aux quiz.</p>
+      <form id="formCode" class="field" style="max-width:280px;margin-top:14px">
+        <label for="inputUsername" class="label">Code d’accès</label>
+        <div class="username-mask-wrap"><input id="inputUsername" name="username" class="input" type="password" placeholder="Ex: YAPAPOL28219" autocomplete="current-password" autocapitalize="characters" spellcheck="false" required autofocus /><button id="btnToggleUsername" class="eye-toggle" type="button" aria-label="Afficher le code" title="Afficher / masquer">👁️‍🗨️</button></div>
+        <div id="codeError" class="muted small" style="color:var(--bad);margin-top:8px;display:none"></div>
+        <button class="btn btn--primary" type="submit" style="margin-top:12px">Se connecter</button>
+      </form>
+      <button class="btn btn--ghost btn--trial" id="btnFreeTrial" type="button" style="max-width:280px;width:100%;margin-top:12px">Essai gratuit</button>
+      <p class="code-contact muted small" style="margin-top:20px;text-align:center">
+        Pour obtenir ton code, contacte l’Administrateur :<br />
+        <a class="whatsapp-link" href="https://wa.me/2250708190886" target="_blank" rel="noopener noreferrer" aria-label="Contacter l’administrateur 0708190886 sur WhatsApp">
+          <span class="whatsapp-icon" aria-hidden="true"><svg class="whatsapp-svg" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16.02 3.2A12.7 12.7 0 0 0 5.25 22.62L3.6 28.8l6.33-1.6A12.72 12.72 0 1 0 16.02 3.2Zm0 23.18a10.45 10.45 0 0 1-5.33-1.46l-.38-.23-3.75.95 1-3.65-.25-.4a10.48 10.48 0 1 1 8.71 4.79Zm5.75-7.84c-.31-.16-1.86-.92-2.15-1.02-.29-.11-.5-.16-.71.16-.21.31-.82 1.02-1 1.23-.18.21-.37.24-.68.08-.31-.16-1.32-.49-2.51-1.55-.93-.83-1.56-1.85-1.74-2.16-.18-.31-.02-.48.14-.64.14-.14.31-.37.47-.55.16-.18.21-.31.31-.52.1-.21.05-.39-.03-.55-.08-.16-.71-1.71-.97-2.34-.26-.62-.52-.53-.71-.54h-.61c-.21 0-.55.08-.84.39-.29.31-1.1 1.07-1.1 2.62s1.13 3.05 1.29 3.26c.16.21 2.22 3.39 5.38 4.75.75.32 1.34.52 1.8.66.76.24 1.44.21 1.98.13.6-.09 1.86-.76 2.12-1.49.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.6-.37Z"/></svg></span>
+          <strong>+225 0708190886</strong>
+        </a>
+        <span class="contact-separator">—</span>
+        <a class="whatsapp-link" href="https://wa.me/2250709282169" target="_blank" rel="noopener noreferrer" aria-label="Contacter l’administrateur 0709282169 sur WhatsApp">
+          <span class="whatsapp-icon" aria-hidden="true"><svg class="whatsapp-svg" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16.02 3.2A12.7 12.7 0 0 0 5.25 22.62L3.6 28.8l6.33-1.6A12.72 12.72 0 1 0 16.02 3.2Zm0 23.18a10.45 10.45 0 0 1-5.33-1.46l-.38-.23-3.75.95 1-3.65-.25-.4a10.48 10.48 0 1 1 8.71 4.79Zm5.75-7.84c-.31-.16-1.86-.92-2.15-1.02-.29-.11-.5-.16-.71.16-.21.31-.82 1.02-1 1.23-.18.21-.37.24-.68.08-.31-.16-1.32-.49-2.51-1.55-.93-.83-1.56-1.85-1.74-2.16-.18-.31-.02-.48.14-.64.14-.14.31-.37.47-.55.16-.18.21-.31.31-.52.1-.21.05-.39-.03-.55-.08-.16-.71-1.71-.97-2.34-.26-.62-.52-.53-.71-.54h-.61c-.21 0-.55.08-.84.39-.29.31-1.1 1.07-1.1 2.62s1.13 3.05 1.29 3.26c.16.21 2.22 3.39 5.38 4.75.75.32 1.34.52 1.8.66.76.24 1.44.21 1.98.13.6-.09 1.86-.76 2.12-1.49.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.6-.37Z"/></svg></span>
+          <strong>+225 0709282169</strong>
+        </a>
+      </p>
+    </section>
+
+    <div id="appContent" class="hidden">
+    <header class="header">
+      <div class="container header__inner">
+        <div class="brand">
+          <div class="brand__mark" aria-hidden="true">Q</div>
+          <div>
+            <div class="brand__name">Revision Science Medicale</div>
+            <div class="brand__tagline">Révise vite, progresse, recommence</div>
+          </div>
+        </div>
+
+        <div class="header__actions">
+          <div class="header__home-stack">
+            <div class="header__home-row">
+              <button class="btn btn--ghost" id="btnHome" type="button">Accueil</button>
+              <button class="btn btn--ghost" id="btnBack" type="button">Retour</button>
+            </div>
+            <button class="btn btn--primary hidden" id="btnHomeQuiz" type="button">Commencer un quiz</button>
+            <button class="btn btn--ghost" id="btnLogout" type="button" title="Changer d'utilisateur">Se déconnecter</button>
+          </div>
+          <button class="btn btn--ghost" id="btnDictionary" type="button">Dictionnaire médical</button>
+          <button class="btn btn--ghost" id="btnResumes" type="button">Résumés de Cours</button>
+          <button class="btn btn--ghost" id="btnHistory" type="button">📊 Historique</button>
+          <button class="btn btn--ghost hidden" id="btnAdmin" type="button">⚙️ Paramètres</button>
+          <button class="btn btn--ghost hidden" id="btnReset" type="button" title="Reprendre le quiz en cours avec un nouvel ordre">Réinitialiser</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card" id="screenStart" aria-labelledby="startTitle">
+        <div class="hero">
+          <img src="./logo.png" alt="Revision Science Medicale" class="hero__img" onerror="this.style.display='none'" />
+        </div>
+        <h1 id="startTitle" class="h1">Commencer un quiz</h1>
+        <p class="muted">
+          Choisis une catégorie, puis lance une session. À la fin tu verras ton score et les corrections.
+        </p>
+
+        <div class="row row--space" style="margin-top:8px;justify-content:center;gap:10px">
+          <button class="btn btn--ghost" id="btnModeQuiz" type="button">Quiz</button>
+          <button class="btn btn--ghost" id="btnModeDE" type="button">Examen de Fin de Formation</button>
+        </div>
+
+        <div id="modeNormal">
+          <div class="grid">
+            <div class="field">
+              <label for="selectLevel" class="label">Niveau</label>
+              <select id="selectLevel" class="select"></select>
+            </div>
+            <div class="field">
+              <label for="selectSubject" class="label">Matière</label>
+              <select id="selectSubject" class="select"></select>
+            </div>
+            <div class="field">
+              <label for="selectTopic" class="label">Sujet (thème)</label>
+              <select id="selectTopic" class="select"></select>
+            </div>
+          </div>
+        </div>
+
+        <div id="modeDE" class="hidden">
+          <div class="grid">
+            <div class="field">
+              <label for="selectDETrack" class="label">Voie</label>
+              <select id="selectDETrack" class="select"></select>
+            </div>
+            <div class="field">
+              <label for="selectDESubject" class="label">Matière</label>
+              <select id="selectDESubject" class="select"></select>
+            </div>
+            <div class="field">
+              <label for="selectDETopic" class="label">Sujet</label>
+              <select id="selectDETopic" class="select"></select>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <button class="btn btn--primary" id="btnStart" type="button">Démarrer</button>
+          <div class="pill" id="questionBankInfo" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="card hidden" id="screenQuiz" aria-labelledby="quizTitle">
+        <div class="quiz__top">
+          <div>
+            <div class="pill" id="quizMeta"></div>
+            <h2 id="quizTitle" class="h2">Question</h2>
+          </div>
+          <div class="quiz__progress" aria-label="Progression">
+            <div class="progress">
+              <div class="progress__bar" id="progressBar"></div>
+            </div>
+            <div class="quiz__footer">
+              <div class="muted small" id="progressText"></div>
+              <div class="quiz__timer" id="quizTimer" aria-live="polite">20 s</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="question" id="questionText"></div>
+        <div class="answers" id="answers"></div>
+
+        <div class="row row--space quiz-actions">
+          <div class="row">
+            <button class="btn" id="btnNext" type="button">Suivant</button>
+            <button class="btn btn--primary" id="btnFinish" type="button">Terminer</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card hidden" id="screenResult" aria-labelledby="resultTitle">
+        <h2 id="resultTitle" class="h2">Résultats</h2>
+        <div class="result__score" id="scoreText"></div>
+        <div class="row">
+          <button class="btn btn--primary" id="btnRetry" type="button">Refaire un quiz</button>
+          <button class="btn" id="btnReview" type="button">Voir les corrections</button>
+          <button class="btn" id="btnResultHistory" type="button">Voir mon historique</button>
+        </div>
+      </section>
+
+      <section class="card hidden" id="screenReview" aria-labelledby="reviewTitle">
+        <div class="row row--space">
+          <h2 id="reviewTitle" class="h2">Corrections</h2>
+          <button class="btn" id="btnBackToStart" type="button">Accueil</button>
+        </div>
+        <div class="review" id="reviewList"></div>
+      </section>
+
+      <section class="card hidden" id="screenHistory" aria-labelledby="historyTitle">
+        <div class="row row--space">
+          <h2 id="historyTitle" class="h2">📊 Historique et évaluations</h2>
+          <button class="btn" id="btnBackToStartFromHistory" type="button">Accueil</button>
+        </div>
+        <p class="muted small" style="margin-top:-6px">
+          Les résultats sont enregistrés uniquement dans ce navigateur, pour chaque code d’accès.
+        </p>
+        <div class="history-view" id="historyContent"></div>
+      </section>
+
+      <section class="card hidden" id="screenAdmin" aria-labelledby="adminTitle">
+        <div class="row row--space">
+          <h2 id="adminTitle" class="h2">⚙️ Paramètres</h2>
+          <button class="btn" id="btnBackToStartFromAdmin" type="button">Accueil</button>
+        </div>
+        <div class="muted small">
+          Espace disponible pour tous les comptes connectés : gestion des quiz uniquement.
+        </div>
+        <div class="admin-logs" id="adminLogs"></div>
+      </section>
+
+      <section class="card hidden" id="screenDictionary" aria-labelledby="dictionaryTitle">
+        <div class="row row--space">
+          <h2 id="dictionaryTitle" class="h2">Dictionnaire médical</h2>
+          <button class="btn" id="btnBackToStartFromDictionary" type="button">Accueil</button>
+        </div>
+        <p class="muted small" style="margin-top:-6px">
+          Saisis un mot : les termes correspondants s’affichent automatiquement pendant la recherche.
+        </p>
+        <div class="grid" style="margin-top:10px">
+          <div class="field" style="grid-column: 1 / -1;">
+            <label for="inputDictionarySearch" class="label">Rechercher</label>
+            <input id="inputDictionarySearch" class="input" type="search" placeholder="Ex: anémie, tachycardie, perfusion..." autocomplete="off" />
+          </div>
+        </div>
+        <div class="dictionary" id="dictionaryList"></div>
+      </section>
+
+      <section class="card hidden" id="screenResumes" aria-labelledby="resumesTitle">
+        <div class="row row--space">
+          <h2 id="resumesTitle" class="h2">Résumés de Cours</h2>
+          <button class="btn" id="btnBackToStartFromResumes" type="button">Accueil</button>
+        </div>
+        <p class="muted small" style="margin-top:-6px">
+          Sélectionne un niveau et une matière. Les fichiers sont prêts pour ajouter les contenus manuellement.
+        </p>
+        <div class="grid" style="margin-top:10px">
+          <div class="field">
+            <label for="selectResumeLevel" class="label">Niveau</label>
+            <select id="selectResumeLevel" class="select"></select>
+          </div>
+          <div class="field">
+            <label for="selectResumeSubject" class="label">Matière</label>
+            <select id="selectResumeSubject" class="select"></select>
+          </div>
+        </div>
+        <div class="resume-view" id="resumeView"></div>
+      </section>
+    </main>
+
+    <dialog class="dialog" id="settingsDialog" aria-labelledby="settingsTitle">
+      <form method="dialog" class="dialog__inner">
+        <div class="row row--space">
+          <h3 class="h3" id="settingsTitle">Paramètres</h3>
+          <button class="iconBtn" value="cancel" aria-label="Fermer" type="submit">✕</button>
+        </div>
+
+        <div class="field">
+          <label class="label" for="inputStudentName">Ton nom (optionnel)</label>
+          <input id="inputStudentName" class="input" placeholder="Ex: Amina" autocomplete="off" />
+          <div class="muted small">On l’utilise seulement pour afficher un message, rien n’est envoyé sur Internet.</div>
+        </div>
+
+        <div class="field">
+          <label class="label" for="toggleShuffle">Mélanger les questions</label>
+          <div class="toggle">
+            <input id="toggleShuffle" type="checkbox" />
+            <span class="toggle__ui" aria-hidden="true"></span>
+            <span class="muted small">Recommandé</span>
+          </div>
+        </div>
+
+        <div class="row row--space">
+          <button class="btn" value="cancel" type="submit">Fermer</button>
+          <button class="btn btn--primary" id="btnSaveSettings" value="ok" type="submit">Enregistrer</button>
+        </div>
+      </form>
+    </dialog>
+
+    <footer class="footer container">
+      <div class="muted small">
+        Pour obtenir ton code :
+        <a class="whatsapp-link" href="https://wa.me/2250708190886" target="_blank" rel="noopener noreferrer" aria-label="Contacter l’administrateur 0708190886 sur WhatsApp">
+          <span class="whatsapp-icon" aria-hidden="true"><svg class="whatsapp-svg" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16.02 3.2A12.7 12.7 0 0 0 5.25 22.62L3.6 28.8l6.33-1.6A12.72 12.72 0 1 0 16.02 3.2Zm0 23.18a10.45 10.45 0 0 1-5.33-1.46l-.38-.23-3.75.95 1-3.65-.25-.4a10.48 10.48 0 1 1 8.71 4.79Zm5.75-7.84c-.31-.16-1.86-.92-2.15-1.02-.29-.11-.5-.16-.71.16-.21.31-.82 1.02-1 1.23-.18.21-.37.24-.68.08-.31-.16-1.32-.49-2.51-1.55-.93-.83-1.56-1.85-1.74-2.16-.18-.31-.02-.48.14-.64.14-.14.31-.37.47-.55.16-.18.21-.31.31-.52.1-.21.05-.39-.03-.55-.08-.16-.71-1.71-.97-2.34-.26-.62-.52-.53-.71-.54h-.61c-.21 0-.55.08-.84.39-.29.31-1.1 1.07-1.1 2.62s1.13 3.05 1.29 3.26c.16.21 2.22 3.39 5.38 4.75.75.32 1.34.52 1.8.66.76.24 1.44.21 1.98.13.6-.09 1.86-.76 2.12-1.49.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.6-.37Z"/></svg></span>
+          <strong>+225 0708190886</strong>
+        </a>
+        <span class="contact-separator">—</span>
+        <a class="whatsapp-link" href="https://wa.me/2250709282169" target="_blank" rel="noopener noreferrer" aria-label="Contacter l’administrateur 0709282169 sur WhatsApp">
+          <span class="whatsapp-icon" aria-hidden="true"><svg class="whatsapp-svg" viewBox="0 0 32 32" aria-hidden="true"><path fill="currentColor" d="M16.02 3.2A12.7 12.7 0 0 0 5.25 22.62L3.6 28.8l6.33-1.6A12.72 12.72 0 1 0 16.02 3.2Zm0 23.18a10.45 10.45 0 0 1-5.33-1.46l-.38-.23-3.75.95 1-3.65-.25-.4a10.48 10.48 0 1 1 8.71 4.79Zm5.75-7.84c-.31-.16-1.86-.92-2.15-1.02-.29-.11-.5-.16-.71.16-.21.31-.82 1.02-1 1.23-.18.21-.37.24-.68.08-.31-.16-1.32-.49-2.51-1.55-.93-.83-1.56-1.85-1.74-2.16-.18-.31-.02-.48.14-.64.14-.14.31-.37.47-.55.16-.18.21-.31.31-.52.1-.21.05-.39-.03-.55-.08-.16-.71-1.71-.97-2.34-.26-.62-.52-.53-.71-.54h-.61c-.21 0-.55.08-.84.39-.29.31-1.1 1.07-1.1 2.62s1.13 3.05 1.29 3.26c.16.21 2.22 3.39 5.38 4.75.75.32 1.34.52 1.8.66.76.24 1.44.21 1.98.13.6-.09 1.86-.76 2.12-1.49.26-.73.26-1.36.18-1.49-.08-.13-.29-.21-.6-.37Z"/></svg></span>
+          <strong>+225 0709282169</strong>
+        </a>
+      </div>
+      <div class="muted small" style="margin-top:6px">
+      </div>
+    </footer>
+    </div>
+
+    <script src="./codes.js"></script>
+    <script src="./data.bundle.js"></script>
+    <script src="./app.bundle.js"></script>
+  
+</body>
+</html>
