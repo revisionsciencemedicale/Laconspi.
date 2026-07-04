@@ -11,15 +11,14 @@ window.USERS = {
   "bbappia": { levels: "all" },
   "paterne": { levels: ["all"]},
 
-  // COMPTE COMMUN LaConspi
+//LES CODES STANDARDS
+"ETULIC12821": {levels: ["L1-Niveau Émergent"] },
+"ETULIC20709": { levels: ["L2-Niveau Ascendant"] },
+"ETULIC3SF0504": {levels: ["L3-Niveau Accompli SF"] },
+"ETULIC3INF1090": {levels: ["L3-Niveau Accompli INF"] },
 "ELEASI10708": {levels: ["A1-Base Santé"] },
 "ELEASI21908": {levels: ["A2-Niveau moyen"] },
-"ETULIC12821": {levels: ["L1-Niveau Émergent"] },
-"ETULIC20709": {levels: ["L2-Niveau Ascendant"] },
-"ETULIC3SF0504": {levels: ["L3-Niveau Accompli SF"] },
-"ETULIC3INF1090": {levels: ["L3-Niveau Accompli SF"] },
 
-  
 //ACCES A1-Base Santé
 
 
@@ -90,6 +89,25 @@ window.USERS = {
 "KLAASSL19537": { levels: ["L1-Niveau Émergent"] },
 "BASCLAL12458": { levels: ["L1-Niveau Émergent"] },
 "TOKPAUL16002": { levels: ["L1-Niveau Émergent"] },
+"BOKOUSL10327": { levels: ["L1-Niveau Émergent"] },
+"YASCHAL11690": { levels: ["L1-Niveau Émergent"] },
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -189,8 +207,27 @@ window.USERS = {
 "ATSARNL27188": { levels: ["L2-Niveau Ascendant"] },
 "NGUAYAL20196": { levels: ["L2-Niveau Ascendant"] },
 "SEKSOPL27909": { levels: ["L2-Niveau Ascendant"] },
+"TOTYAOL23374": { levels: ["L2-Niveau Ascendant"] },
 
-  //ACCES L3-Niveau Accompli SF
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//ACCES L3-Niveau Accompli SF
 
   "FOFMARL33911": {levels: ["L3-Niveau Accompli SF"] },
   
@@ -381,19 +418,22 @@ window.UTILISATEURS_LOCAUX_INFOS = window.UTILISATEURS_LOCAUX_INFOS || {
 "ATSARNL27188": {nom: "ATSAIN", prenom: "ARNAULDE CECILIA", niveau: "L2-Niveau Ascendant"},
 "NGUAYAL20196": {nom: "NGUESSAN", prenom: "AYA ODETTE", niveau: "L2-Niveau Ascendant"},
 "SEKSOPL27909": {nom: "SEKA", prenom: "SOPIE EPIPHANIE ANGELO", niveau: "L2-Niveau Ascendant"},
-  "FOFMARL33911": {nom: "FOFANA", prenom: "MARIAM", niveau: "L3-Niveau Accompli SF" },
+"FOFMARL33911": {nom: "FOFANA", prenom: "MARIAM", niveau: "L3-Niveau Accompli SF" },
 "BASCLAL12458": {nom: "BASSOLE", prenom: "CLAUDINE", niveau: "L1-Niveau Émergent"},
 "TOKPAUL16002": {nom: "TOKOU", prenom: "PAUL SAMUEL", niveau: "L1-Niveau Émergent"},
+"TOTYAOL23374": {nom: "TOTORI", prenom: "YAO JEAN PAUL", niveau: "L2-Niveau Ascendant"},
+"BOKOUSL10327": {nom: "BOKA", prenom: "OUSSO INES", niveau: "L1-Niveau Émergent"},
+"YASCHAL11690": {nom: "YASSI", prenom: "CHADON RACHEL", niveau: "L1-Niveau Émergent"},
 
 
-//COMPTE COMMUN LaConspi
 
-  "ELEASI10708": {nom: "ELEVE", prenom: "AUXILIAIRE 1", niveau: "A1-Base Santé" },
-"ELEASI21908": {nom: "ELEVE", prenom: "AUXILIAIRE 2", niveau: "A2-Niveau moyen" },
-"ETULIC12821": {nom: "ETUDIANT", prenom: "LICENCE 1", niveau: "L1-Niveau Émergentlevels" },
-"ETULIC20709": {nom: "ETUDIANT", prenom: "LICENCE 2", niveau: "L2-Niveau Ascendant" },
-"ETULIC3SF0504": {nom: "ETUDIANT", prenom: "LICENCE 3 SF", niveau:"L3-Niveau Accompli SF" },
-"ETULIC3INF1090": {nom: "ETUDIANT", prenom: "LICENCE 3 INF", niveau: "L3-Niveau Accompli SF" },
+"ETULIC12821": {nom: "ETUDIANT", prenom: "LICENCE 1", niveau: "L1-Niveau Émergent"},
+"ETULIC20709": {nom: "ETUDIANT", prenom: "LICENCE 2", niveau: "L2-Niveau Ascendant"},
+"ETULIC3SF0504": {nom: "ETUDIANT", prenom: "LICENCE 3 SF", niveau: "L3-Niveau Accompli SF"},
+"ETULIC3INF1090": {nom: "ETUDIANT", prenom: "LICENCE 3 INF", niveau: "L3-Niveau Accompli INF"},
+"ELEASI10708": {nom: "ELEVE", prenom: "AUXILLIAIRE 1", niveau: "A1-Base Santé"},
+"ELEASI21908": {nom: "ELEVE", prenom: "AUXILLIAIRE 2", niveau: "A2-Niveau moyen"},
+
 };
 
 /**
