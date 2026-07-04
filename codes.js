@@ -11,7 +11,15 @@ window.USERS = {
   "bbappia": { levels: "all" },
   "paterne": { levels: ["all"]},
 
+  // COMPTE COMMUN LaConspi
+"ELEASI10708": {levels: ["A1-Base Santé"] },
+"ELEASI21908": {levels: ["A2-Niveau moyen"] },
+"ETULIC12821": {levels: ["L1-Niveau Émergent"] },
+"ETULIC20709": {levels: ["L2-Niveau Ascendant"] },
+"ETULIC3SF0504": {levels: ["L3-Niveau Accompli SF"] },
+"ETULIC3INF1090": {levels: ["L3-Niveau Accompli SF"] },
 
+  
 //ACCES A1-Base Santé
 
 
@@ -378,7 +386,14 @@ window.UTILISATEURS_LOCAUX_INFOS = window.UTILISATEURS_LOCAUX_INFOS || {
 "TOKPAUL16002": {nom: "TOKOU", prenom: "PAUL SAMUEL", niveau: "L1-Niveau Émergent"},
 
 
+//COMPTE COMMUN LaConspi
 
+  "ELEASI10708": {nom: "ELEVE", prenom: "AUXILIAIRE 1", niveau: "A1-Base Santé" },
+"ELEASI21908": {nom: "ELEVE", prenom: "AUXILIAIRE 2", niveau: "A2-Niveau moyen" },
+"ETULIC12821": {nom: "ETUDIANT", prenom: "LICENCE 1", niveau: "L1-Niveau Émergentlevels" },
+"ETULIC20709": {nom: "ETUDIANT", prenom: "LICENCE 2", niveau: "L2-Niveau Ascendant" },
+"ETULIC3SF0504": {nom: "ETUDIANT", prenom: "LICENCE 3 SF", niveau:"L3-Niveau Accompli SF" },
+"ETULIC3INF1090": {nom: "ETUDIANT", prenom: "LICENCE 3 INF", niveau: "L3-Niveau Accompli SF" },
 };
 
 /**
