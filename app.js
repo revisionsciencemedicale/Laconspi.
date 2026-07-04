@@ -84,6 +84,10 @@
     deviceId: "quizRevision.deviceId.v1",
     appSettings: "quizRevision.appSettings.v1",
     adminCache: "quizRevision.adminCache.v1",
+    localUsers: "quizRevision.localUsers.v1",
+    activityLog: "quizRevision.activityLog.v1",
+    activeSessions: "quizRevision.activeSessions.v1",
+    forceLogout: "quizRevision.forceLogout.v1",
   };
 
   const FREE_TRIAL_USER = "__ESSAI_GRATUIT__";
@@ -338,8 +342,7 @@
     freeTrialDuration: "",
     freeTrialMaxAttempts: 1,
     autoBackup: false,
-    serverSync: true,
-    keepAlive: false,
+    localSync: true,
     customQuestions: [],
     deletedQuestionIds: [],
     customCatalog: { levels: [], subjectsByLevel: {}, topicsByLevelSubject: {} }
@@ -419,19 +422,14 @@
     };
   }
 
-  async function loadAppSettingsFromServer() {
+  async function loadAppSettingsFromLocal() {
     try {
-      const data = await apiGet('/api/settings');
-      appSettings = normalizeAppSettings(data.settings || {});
-      localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
-        notifySynthesisQuestionsUpdated('settings');
-    } catch (_) {
-      try {
-        appSettings = normalizeAppSettings(JSON.parse(localStorage.getItem(STORAGE_KEYS.appSettings) || '{}'));
-      } catch {
-        appSettings = normalizeAppSettings({});
-      }
+      appSettings = normalizeAppSettings(JSON.parse(localStorage.getItem(STORAGE_KEYS.appSettings) || '{}'));
+    } catch {
+      appSettings = normalizeAppSettings({});
     }
+    localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
+    notifySynthesisQuestionsUpdated('settings');
     applyRuntimeSettings();
     return appSettings;
   }
@@ -712,45 +710,406 @@
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  function shouldRetryRequest(err) {
-    // Correction mobile : sur certains téléphones/réseaux, le premier appel fetch peut
-    // échouer brièvement ou recevoir une réponse 5xx pendant le réveil du serveur.
-    // On réessaie uniquement les erreurs temporaires, jamais les refus métier (401/403/409).
-    return !err.status || err.status === 408 || err.status === 425 || err.status === 429 || err.status >= 500;
+  function makeLocalError(message, status = 400, extra = {}) {
+    const err = new Error(message);
+    err.status = status;
+    err.data = { ok: false, error: message, ...extra };
+    return err;
   }
 
-  async function fetchJsonWithRetry(path, options = {}, retries = 2) {
-    let lastError = null;
-    for (let attempt = 0; attempt <= retries; attempt += 1) {
-      try {
-        const res = await fetch(path, options);
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const err = new Error(data.error || "Erreur serveur");
-          err.status = res.status;
-          err.data = data;
-          throw err;
-        }
-        return data;
-      } catch (err) {
-        lastError = err;
-        if (attempt >= retries || !shouldRetryRequest(err)) throw err;
-        await sleep(450 * (attempt + 1));
-      }
-    }
-    throw lastError || new Error("Erreur réseau");
+  function isAdminUsername(username) {
+    return !!(
+      username &&
+      Array.isArray(window.ADMINS) &&
+      window.ADMINS.some((admin) => normalizeKey(admin) === normalizeKey(username))
+    );
   }
 
-  async function apiPost(path, payload = {}) {
-    return fetchJsonWithRetry(path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+  function cleanUsernamePart(value, length) {
+    return String(value || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]/g, '')
+      .toUpperCase()
+      .slice(0, length)
+      .padEnd(length, 'X');
+  }
+
+  function generateLocalUsername({ lastName, firstName, levels, phone }) {
+    const levelText = Array.isArray(levels) ? levels[0] || 'NA' : String(levels || 'NA');
+    const digits = String(phone || '').replace(/\D/g, '');
+    return `${cleanUsernamePart(lastName, 3)}${cleanUsernamePart(firstName, 3)}${cleanUsernamePart(levelText, 2)}${digits.slice(-4).padStart(4, '0')}`;
+  }
+
+  function readLocalUsersStore() {
+    const store = readJsonStorage(STORAGE_KEYS.localUsers, { users: [] });
+    return { users: Array.isArray(store?.users) ? store.users : [] };
+  }
+
+  function writeLocalUsersStore(store) {
+    writeJsonStorage(STORAGE_KEYS.localUsers, { users: Array.isArray(store?.users) ? store.users : [] });
+  }
+
+  function localUserRows() {
+    return readLocalUsersStore().users
+      .filter((row) => row && !row.deleted)
+      .map((row) => ({
+        ...row,
+        levels: normalizeAccountLevels(row.levels || []),
+        dynamic: true,
+        source: 'local',
+      }));
+  }
+
+  function staticUserRows() {
+    return Object.entries(window.USERS || {}).map(([username, user]) => {
+      const config = user || {};
+      const firstName = config.first_name || config.firstName || '';
+      const lastName = config.last_name || config.lastName || '';
+      const fullName = config.full_name || config.fullName || `${lastName} ${firstName}`.trim();
+      return {
+        username,
+        full_name: fullName,
+        first_name: firstName,
+        last_name: lastName,
+        phone: config.phone || '',
+        levels: normalizeAccountLevels(config.levels || []),
+        suspended: !!config.suspended,
+        deleted: false,
+        dynamic: !!config.dynamic,
+        source: config.source || (config.dynamic ? 'local' : 'codes'),
+      };
     });
   }
 
-  async function apiGet(path) {
-    return fetchJsonWithRetry(path, { method: "GET", headers: { "Accept": "application/json" } });
+  function mergeLocalUserRows(extraRows = []) {
+    const merged = new Map();
+    for (const row of staticUserRows()) merged.set(row.username, row);
+    for (const row of [...localUserRows(), ...(Array.isArray(extraRows) ? extraRows : [])]) {
+      if (!row || !row.username || row.deleted) continue;
+      merged.set(row.username, {
+        ...row,
+        levels: normalizeAccountLevels(row.levels || []),
+        dynamic: true,
+        source: row.source || 'local',
+      });
+    }
+    return Array.from(merged.values()).sort((a, b) => String(a.username).localeCompare(String(b.username)));
+  }
+
+  function findLocalUser(username) {
+    const key = normalizeKey(username);
+    return mergeLocalUserRows().find((user) => normalizeKey(user.username) === key) || null;
+  }
+
+  function saveLocalUserRow(user) {
+    if (!user || !user.username) return;
+    const store = readLocalUsersStore();
+    const username = String(user.username).trim();
+    const idx = store.users.findIndex((u) => normalizeKey(u.username) === normalizeKey(username));
+    const nowTs = Date.now();
+    const row = {
+      username,
+      full_name: user.full_name || user.fullName || '',
+      first_name: user.first_name || user.firstName || '',
+      last_name: user.last_name || user.lastName || '',
+      phone: user.phone || '',
+      levels: normalizeAccountLevels(user.levels || []),
+      suspended: !!user.suspended,
+      deleted: !!user.deleted,
+      dynamic: true,
+      source: 'local',
+      created_at: user.created_at || user.createdAt || nowTs,
+      updated_at: nowTs,
+    };
+    if (idx >= 0) store.users[idx] = { ...store.users[idx], ...row, created_at: store.users[idx].created_at || row.created_at };
+    else store.users.push(row);
+    writeLocalUsersStore(store);
+    window.USERS = window.USERS || {};
+    if (!row.deleted) {
+      window.USERS[username] = {
+        levels: row.levels,
+        suspended: row.suspended,
+        dynamic: true,
+        source: 'local',
+        full_name: row.full_name,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        phone: row.phone,
+      };
+    }
+  }
+
+  function patchLocalUser(username, patch) {
+    const store = readLocalUsersStore();
+    const idx = store.users.findIndex((u) => normalizeKey(u.username) === normalizeKey(username));
+    if (idx < 0) return false;
+    store.users[idx] = { ...store.users[idx], ...patch, updated_at: Date.now() };
+    writeLocalUsersStore(store);
+    if (patch.deleted) {
+      if (window.USERS) delete window.USERS[username];
+    } else {
+      saveLocalUserRow(store.users[idx]);
+    }
+    return true;
+  }
+
+  function readActiveSessions() {
+    const sessions = readJsonStorage(STORAGE_KEYS.activeSessions, {});
+    return sessions && typeof sessions === 'object' ? sessions : {};
+  }
+
+  function writeActiveSessions(sessions) {
+    writeJsonStorage(STORAGE_KEYS.activeSessions, sessions && typeof sessions === 'object' ? sessions : {});
+  }
+
+  function sessionKeyFor(username, sessionToken) {
+    return isAdminUsername(username) ? `${username}:${sessionToken || 'local'}` : username;
+  }
+
+  function publicLocalSession(session) {
+    return {
+      username: session.username,
+      deviceId: session.deviceId || '-',
+      browser: session.browser || '-',
+      platform: session.platform || '-',
+      language: session.language || '-',
+      online: !!session.online,
+      startedAt: session.startedAt || 0,
+      lastSeen: session.lastSeen || 0,
+    };
+  }
+
+  function addLocalLog(entry = {}) {
+    const logs = readJsonStorage(STORAGE_KEYS.activityLog, []);
+    const next = Array.isArray(logs) ? logs : [];
+    next.push({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      timestamp: Date.now(),
+      username: entry.user || entry.username || '-',
+      action: entry.action || 'activity',
+      device: entry.device || {},
+      details: entry.details || {},
+      blockedBy: entry.blockedBy || undefined,
+    });
+    writeJsonStorage(STORAGE_KEYS.activityLog, next.slice(-5000));
+  }
+
+  function assertLocalAdmin(username) {
+    if (!isAdminUsername(username)) throw makeLocalError('Accès administrateur refusé.', 403);
+  }
+
+  function localDashboard(activeSessions, logs) {
+    return {
+      connectedUsers: Object.keys(activeSessions || {}).length,
+      quizDone: (Array.isArray(logs) ? logs : []).filter((l) => l.action === 'finish_quiz').length,
+    };
+  }
+
+  function localAdminPayload() {
+    const activeSessions = readActiveSessions();
+    const loginLogs = readJsonStorage(STORAGE_KEYS.activityLog, []);
+    return {
+      ok: true,
+      activeSessions: Object.fromEntries(Object.entries(activeSessions).map(([key, session]) => [key, publicLocalSession(session)])),
+      loginLogs: Array.isArray(loginLogs) ? loginLogs : [],
+      dashboard: localDashboard(activeSessions, loginLogs),
+      dynamicUsers: mergeLocalUserRows(),
+      appSettings: normalizeAppSettings(readJsonStorage(STORAGE_KEYS.appSettings, appSettings || {})),
+      storage: 'local',
+    };
+  }
+
+  async function localGet(action) {
+    if (action === 'settings') return { ok: true, settings: normalizeAppSettings(readJsonStorage(STORAGE_KEYS.appSettings, appSettings || {})) };
+    if (action === 'health') return { ok: true, storage: 'local' };
+    throw makeLocalError('Action locale inconnue.', 404);
+  }
+
+  async function localPost(action, payload = {}) {
+    const username = String(payload.username || '').trim();
+    const sessionToken = String(payload.sessionToken || '').trim() || getSessionToken();
+    const device = payload.device || {};
+
+    if (action === 'activity') {
+      addLocalLog({ user: username, action: payload.action, details: payload.details || {}, device });
+      return { ok: true };
+    }
+
+    if (action === 'login') {
+      if (!username) throw makeLocalError('Veuillez entrer votre nom d’utilisateur avant de vous connecter.', 400);
+      const user = findLocalUser(username);
+      if (!user) {
+        addLocalLog({ user: username || '-', action: 'login_invalid', device });
+        throw makeLocalError('Identifiants invalides.', 401);
+      }
+      if (user.suspended) {
+        addLocalLog({ user: username, action: 'login_suspended', device });
+        throw makeLocalError('Compte suspendu. Merci de contacter un administrateur.', 403);
+      }
+      const forceMap = readJsonStorage(STORAGE_KEYS.forceLogout, {});
+      if (forceMap && typeof forceMap === 'object' && forceMap[username]) {
+        delete forceMap[username];
+        writeJsonStorage(STORAGE_KEYS.forceLogout, forceMap);
+      }
+      const sessions = readActiveSessions();
+      const key = sessionKeyFor(username, sessionToken);
+      const existing = sessions[key];
+      const startedAt = existing?.startedAt || Date.now();
+      const session = {
+        username,
+        sessionToken,
+        deviceId: device.deviceId || '-',
+        browser: device.browser || '-',
+        platform: device.platform || '-',
+        userAgent: device.userAgent || '-',
+        language: device.language || '-',
+        online: true,
+        startedAt,
+        lastSeen: Date.now(),
+      };
+      sessions[key] = session;
+      writeActiveSessions(sessions);
+      addLocalLog({ user: username, action: 'login', device: publicLocalSession(session) });
+      return { ok: true, userConfig: { ...user, source: user.source || 'local' }, session: publicLocalSession(session) };
+    }
+
+    if (action === 'check-session') {
+      const forceMap = readJsonStorage(STORAGE_KEYS.forceLogout, {});
+      if (forceMap && typeof forceMap === 'object' && forceMap[username]) {
+        return { loggedIn: false, forceLogout: true };
+      }
+      const user = findLocalUser(username);
+      if (!user) return { loggedIn: false, forceLogout: false };
+      const sessions = readActiveSessions();
+      const key = sessionKeyFor(username, sessionToken);
+      sessions[key] = {
+        ...(sessions[key] || {}),
+        username,
+        sessionToken,
+        deviceId: device.deviceId || sessions[key]?.deviceId || '-',
+        browser: device.browser || sessions[key]?.browser || '-',
+        platform: device.platform || sessions[key]?.platform || '-',
+        userAgent: device.userAgent || sessions[key]?.userAgent || '-',
+        language: device.language || sessions[key]?.language || '-',
+        online: true,
+        startedAt: sessions[key]?.startedAt || Date.now(),
+        lastSeen: Date.now(),
+      };
+      writeActiveSessions(sessions);
+      return { loggedIn: true, forceLogout: false, userConfig: { ...user, source: user.source || 'local' } };
+    }
+
+    if (action === 'logout') {
+      const sessions = readActiveSessions();
+      delete sessions[sessionKeyFor(username, sessionToken)];
+      writeActiveSessions(sessions);
+      addLocalLog({ user: username || '-', action: payload.action || 'logout', device });
+      return { ok: true };
+    }
+
+    if (action === 'admin-logs' || action === 'admin-all-users') {
+      assertLocalAdmin(username);
+      return localAdminPayload();
+    }
+
+    if (action === 'admin-create-user') {
+      assertLocalAdmin(username);
+      const levels = normalizeAccountLevels(Array.isArray(payload.levels) ? payload.levels.filter(Boolean) : []);
+      if (!levels.length) throw makeLocalError('Veuillez cocher au moins un niveau valide.', 400);
+      const generated = generateLocalUsername({ lastName: payload.lastName, firstName: payload.firstName, levels, phone: payload.phone });
+      const existingRows = mergeLocalUserRows();
+      let newUsername = generated;
+      let i = 1;
+      while (existingRows.some((u) => normalizeKey(u.username) === normalizeKey(newUsername))) newUsername = `${generated}${i++}`;
+      const fullName = `${payload.lastName || ''} ${payload.firstName || ''}`.trim();
+      const userConfig = { username: newUsername, levels, suspended: false, dynamic: true, source: 'local', full_name: fullName, first_name: payload.firstName || '', last_name: payload.lastName || '', phone: payload.phone || '' };
+      saveLocalUserRow(userConfig);
+      addLocalLog({ user: newUsername, action: 'admin_create_user', details: { by: username, levels } });
+      return { ok: true, username: newUsername, levels, userConfig };
+    }
+
+    if (action === 'admin-force-logout') {
+      assertLocalAdmin(username);
+      const targetUser = String(payload.targetUser || '').trim();
+      if (!targetUser) throw makeLocalError('Utilisateur cible manquant.', 400);
+      const sessions = readActiveSessions();
+      let disconnected = 0;
+      for (const [key, session] of Object.entries(sessions)) {
+        if (normalizeKey(session.username) === normalizeKey(targetUser)) {
+          delete sessions[key];
+          disconnected += 1;
+        }
+      }
+      writeActiveSessions(sessions);
+      const forceMap = readJsonStorage(STORAGE_KEYS.forceLogout, {});
+      forceMap[targetUser] = Date.now();
+      writeJsonStorage(STORAGE_KEYS.forceLogout, forceMap);
+      addLocalLog({ user: targetUser, action: 'admin_force_logout', details: { by: username, disconnected } });
+      return { ok: true, disconnected, forceLogout: true };
+    }
+
+    if (action === 'admin-disconnect-all') {
+      assertLocalAdmin(username);
+      const sessions = readActiveSessions();
+      let disconnected = 0;
+      for (const [key, session] of Object.entries(sessions)) {
+        if (normalizeKey(session.username) !== normalizeKey(username)) {
+          delete sessions[key];
+          disconnected += 1;
+        }
+      }
+      writeActiveSessions(sessions);
+      addLocalLog({ user: username, action: 'admin_disconnect_all', details: { disconnected } });
+      return { ok: true, disconnected };
+    }
+
+    if (action === 'admin-update-user') {
+      assertLocalAdmin(username);
+      const targetUser = String(payload.targetUser || '').trim();
+      if (!targetUser) throw makeLocalError('Utilisateur cible manquant.', 400);
+      if (payload.action === 'suspend' || payload.action === 'reactivate') {
+        const suspended = payload.action === 'suspend';
+        const ok = patchLocalUser(targetUser, { suspended });
+        if (!ok) throw makeLocalError('Compte introuvable.', 404);
+        addLocalLog({ user: targetUser, action: suspended ? 'admin_suspend_user' : 'admin_reactivate_user', details: { by: username } });
+        return { ok: true, action: payload.action, targetUser, suspended };
+      }
+      if (payload.action === 'delete') {
+        const ok = patchLocalUser(targetUser, { deleted: true });
+        if (!ok) throw makeLocalError('Compte introuvable.', 404);
+        addLocalLog({ user: targetUser, action: 'admin_delete_user', details: { by: username } });
+        return { ok: true, action: 'delete', targetUser, deleted: true };
+      }
+      if (payload.action === 'editProfile') {
+        const levels = normalizeAccountLevels(Array.isArray(payload.levels) ? payload.levels.filter(Boolean) : []);
+        const firstName = String(payload.firstName || '').trim();
+        const lastName = String(payload.lastName || '').trim();
+        const phone = String(payload.phone || '').trim();
+        if (!levels.length || !firstName || !lastName || !phone) throw makeLocalError('Nom, prénom, numéro et niveau sont obligatoires.', 400);
+        const baseUsername = generateLocalUsername({ lastName, firstName, levels, phone });
+        const existingRows = mergeLocalUserRows().filter((u) => normalizeKey(u.username) !== normalizeKey(targetUser));
+        let newUsername = baseUsername;
+        let i = 1;
+        while (existingRows.some((u) => normalizeKey(u.username) === normalizeKey(newUsername))) newUsername = `${baseUsername}${i++}`;
+        patchLocalUser(targetUser, { deleted: true });
+        const fullName = `${lastName} ${firstName}`.trim();
+        const userConfig = { username: newUsername, full_name: fullName, first_name: firstName, last_name: lastName, phone, levels, suspended: false, dynamic: true, source: 'local' };
+        saveLocalUserRow(userConfig);
+        addLocalLog({ user: newUsername, action: 'admin_edit_user', details: { by: username, oldUsername: targetUser, levels } });
+        return { ok: true, action: 'editProfile', oldUsername: targetUser, username: newUsername, levels, user: userConfig };
+      }
+      throw makeLocalError('Action inconnue.', 400);
+    }
+
+    if (action === 'admin-save-settings') {
+      assertLocalAdmin(username);
+      appSettings = normalizeAppSettings(payload.settings || {});
+      localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
+      notifySynthesisQuestionsUpdated('settings');
+      return { ok: true, settings: appSettings };
+    }
+
+    throw makeLocalError('Action locale inconnue.', 404);
   }
 
   function getSessionToken() {
@@ -823,7 +1182,7 @@
   async function logActivity(user, action, details = {}) {
     if (isFreeTrialUser(user)) return;
     try {
-      await apiPost("/api/activity", {
+      await localPost("activity", {
         username: user,
         sessionToken: getSessionToken(),
         action,
@@ -852,13 +1211,13 @@
       return { loggedIn: false, forceLogout: false };
     }
     try {
-      const status = await apiPost("/api/check-session", { username: user, sessionToken: token, device: getDeviceInfo() });
+      const status = await localPost("check-session", { username: user, sessionToken: token, device: getDeviceInfo() });
       if (status.userConfig) {
         window.USERS = window.USERS || {};
         window.USERS[user] = status.userConfig;
       }
       // Ne plus déconnecter automatiquement les comptes créés localement / depuis le site
-      // quand la session serveur n'est pas retrouvée ou quand l'appareil change.
+      // quand la session locale doit être vérifiée après un changement d’appareil.
       // Seule une déconnexion forcée par l'administrateur doit vraiment couper l'accès.
       if (status && status.forceLogout) return status;
       if (status && status.loggedIn === false) {
@@ -869,8 +1228,8 @@
       if (canUseOfflineMode() && window.USERS && window.USERS[user]) {
         return { loggedIn: true, forceLogout: false, offlineMode: true };
       }
-      // Ne pas déconnecter automatiquement un compte créé sur le site si le serveur répond mal.
-      return { loggedIn: true, forceLogout: false, pendingServerCheck: true };
+      // Ne pas déconnecter automatiquement un compte créé sur le site en cas d’anomalie locale.
+      return { loggedIn: true, forceLogout: false, pendingLocalCheck: true };
     }
   }
 
@@ -892,7 +1251,7 @@
       } else if (!status.loggedIn) {
         // On ne déconnecte plus automatiquement l'utilisateur.
         // La déconnexion automatique posait problème aux comptes créés directement depuis le site.
-        console.warn("Session non confirmée par le serveur, maintien de l'accès local.", status);
+        console.warn("Session locale non confirmée, maintien de l'accès.", status);
       }
     }, 30000);
   }
@@ -908,16 +1267,9 @@
     const user = localStorage.getItem(STORAGE_KEYS.user);
     const token = localStorage.getItem(STORAGE_KEYS.sessionToken);
     if (!user || !token) return;
-    const payload = JSON.stringify({ username: user, sessionToken: token, action, device: getDeviceInfo() });
     try {
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon("/api/logout", new Blob([payload], { type: "application/json" }));
-      } else {
-        fetch("/api/logout", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true });
-      }
-    } catch (e) {
-      console.warn("Déconnexion serveur non confirmée:", e.message);
-    }
+      void localPost("logout", { username: user, sessionToken: token, action, device: getDeviceInfo() });
+    } catch (_) {}
   }
 
   async function grantAccess(username) {
@@ -936,7 +1288,7 @@
     }
     if (!freeTrial) {
       try {
-        const data = await apiPost("/api/login", {
+        const data = await localPost("login", {
           username,
           sessionToken: getSessionToken(),
           device: getDeviceInfo(),
@@ -948,27 +1300,14 @@
         localStorage.setItem(STORAGE_KEYS.user, username);
         startSessionHeartbeat(username);
       } catch (e) {
-        const serverUnavailable = [0, 404, 405, 503].includes(Number(e.status || 0))
-          || /Failed to fetch|NetworkError|Unexpected token|Mode local|base PostgreSQL/i.test(String(e.data?.error || e.message || ''));
-        const localUserExists = !!(window.USERS && window.USERS[username]);
-
-        // Correction connexion mobile/static : si l'API serveur ou PostgreSQL n'est pas disponible,
-        // on autorise quand même les comptes présents dans codes.js. Le champ reste masqué comme un mot de passe.
-        if ((canUseOfflineMode() || serverUnavailable) && localUserExists) {
-          console.warn("Connexion locale activée pour", username);
-          localStorage.setItem(STORAGE_KEYS.user, username);
-        } else {
-          const msg = e.data?.error || e.message || "Connexion refusée par le serveur.";
-          if (e.data?.forcedLogout) {
-            clearLocalLogin();
-          }
-          if (els.codeError) {
-            els.codeError.textContent = msg.replace(/\n/g, " ");
-            els.codeError.style.display = "block";
-          }
-          alert(msg);
-          return false;
+        const msg = e.data?.error || e.message || "Connexion refusée.";
+        if (e.data?.forcedLogout) clearLocalLogin();
+        if (els.codeError) {
+          els.codeError.textContent = msg.replace(/\n/g, " ");
+          els.codeError.style.display = "block";
         }
+        alert(msg);
+        return false;
       }
     }
 
@@ -1101,7 +1440,7 @@
     let cfg = applyManualLocalUserInfo(user) || window.USERS?.[user];
 
     // Correction locale : certains comptes créés en ligne ou en mode local peuvent
-    // rester connectés quand le serveur est indisponible, mais ne pas encore être
+    // rester connectés quand les données locales ne sont pas encore
     // réinjectés dans window.USERS. Dans ce cas, on récupère d'abord le cache admin
     // sauvegardé dans le navigateur afin que les listes Niveau / Matière / Sujet
     // restent sélectionnables dans « Commencer un quiz ».
@@ -1195,10 +1534,7 @@
     let adminWarning = "";
     const cachedAdminPayload = readJsonStorage(STORAGE_KEYS.adminCache, null);
     try {
-      payload = await Promise.race([
-        apiPost("/api/admin/logs", currentAuthPayload()),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Le serveur met trop de temps à répondre. Le dernier affichage sauvegardé est utilisé.")), 15000))
-      ]);
+      payload = await localPost("admin-logs", currentAuthPayload());
       if (payload && payload.ok !== false) {
         writeJsonStorage(STORAGE_KEYS.adminCache, {
           savedAt: Date.now(),
@@ -1210,7 +1546,7 @@
         });
       }
     } catch (e) {
-      adminWarning = e.data?.error || e.message || "Impossible de charger les données serveur. Le dernier affichage sauvegardé est utilisé.";
+      adminWarning = e.data?.error || e.message || "Impossible de charger les données locales. Le dernier affichage sauvegardé est utilisé.";
       payload = cachedAdminPayload || {
         loginLogs: [],
         activeSessions: {},
@@ -1220,12 +1556,9 @@
       };
     }
 
-    async function refreshAdminUsersPayloadFromServer() {
+    async function refreshAdminUsersPayloadFromLocal() {
       try {
-        const usersPayload = await Promise.race([
-          apiPost('/api/admin/all-users', currentAuthPayload()),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('chargement utilisateurs trop long')), 8000))
-        ]);
+        const usersPayload = await localPost('admin-all-users', currentAuthPayload());
         if (usersPayload && usersPayload.ok !== false) {
           payload.dynamicUsers = usersPayload.dynamicUsers || payload.dynamicUsers || [];
           payload.activeSessions = usersPayload.activeSessions || payload.activeSessions || {};
@@ -1239,12 +1572,10 @@
             dashboard: payload.dashboard || {}
           });
         }
-      } catch (e) {
-        console.warn('Liste complète des utilisateurs non rechargée:', e.message || e);
-      }
+      } catch (_) {}
     }
 
-    await refreshAdminUsersPayloadFromServer();
+    await refreshAdminUsersPayloadFromLocal();
 
     function normalizeUserRecord(username, user = {}) {
       const levels = user.levels === 'all' ? ['Tous les niveaux'] : (Array.isArray(user.levels) ? user.levels : []);
@@ -1260,16 +1591,16 @@
         phone: user.phone || '',
         levels,
         suspended: !!user.suspended,
-        source: user.dynamic ? 'server' : (user.source || 'codes')
+        source: user.dynamic ? 'local' : (user.source || 'codes')
       };
     }
 
-    function mergeAdminUsers(serverUsers = []) {
+    function mergeAdminUsers(localUsers = []) {
       const byUsername = new Map();
       Object.entries(window.USERS || {}).forEach(([username, user]) => {
         byUsername.set(username, normalizeUserRecord(username, user || {}));
       });
-      (Array.isArray(serverUsers) ? serverUsers : []).forEach((user) => {
+      (Array.isArray(localUsers) ? localUsers : []).forEach((user) => {
         const username = user.username || user.targetUser;
         if (!username) return;
         byUsername.set(username, { ...normalizeUserRecord(username, user), ...user, username });
@@ -1302,7 +1633,7 @@
 
     els.adminLogs.dataset.rendered = "1";
     els.adminLogs.innerHTML = `
-      ${adminWarning ? `<div class="notice" style="margin-bottom:12px"><strong>Information :</strong> ${escapeHtml(adminWarning)}<br><small>Le menu reste visible avec les dernières données sauvegardées dans ce navigateur. Les actions qui modifient les comptes nécessitent que le serveur et la base de données soient bien connectés.</small></div>` : ""}
+      ${adminWarning ? `<div class="notice" style="margin-bottom:12px"><strong>Information :</strong> ${escapeHtml(adminWarning)}<br><small>Le menu reste visible avec les dernières données sauvegardées dans ce navigateur.</small></div>` : ""}
       <div class="admin-tabs">
         <button class="btn btn--primary adminTabBtn" data-tab="general" type="button">⚙️ Paramètres généraux</button>
         <button class="btn adminTabBtn" data-tab="quiz" type="button">📚 Gestion des quiz</button>
@@ -1393,7 +1724,7 @@
         <div class="adminQuizSubPanel hidden" data-quiz-subpanel="quiz-content">
         <h3 class="h3">📚 Ajouter de nouvelles matières et de nouveaux sujets</h3>
         <div class="admin-box quiz-catalog-admin">
-          <p class="muted small">Gestion liée aux paramètres du site : en ligne, les ajouts sont enregistrés sur le serveur/la base ; en local, ils restent enregistrés dans ce navigateur pour faciliter les tests.</p>
+          <p class="muted small">Gestion liée aux paramètres du site : les ajouts restent enregistrés dans ce navigateur.</p>
           <div class="grid">
             <div class="field">
               <label class="label">Niveau</label>
@@ -1483,20 +1814,14 @@
         </div>
         <div class="adminTechSubPanel hidden" data-tech-subpanel="tech-settings">
           <h3 class="h3">🌐 Paramètres techniques</h3>
-          <div class="checkbox-grid adminSettings"><label><input type="checkbox" data-setting="autoBackup" ${appSettings.autoBackup ? 'checked' : ''}> Sauvegarde automatique</label><label><input type="checkbox" data-setting="serverSync" ${appSettings.serverSync ? 'checked' : ''}> Synchronisation serveur</label><label><input type="checkbox" data-setting="keepAlive" ${appSettings.keepAlive ? 'checked' : ''}> Garder le serveur actif automatiquement</label></div>
+          <div class="checkbox-grid adminSettings"><label><input type="checkbox" data-setting="autoBackup" ${appSettings.autoBackup ? 'checked' : ''}> Sauvegarde automatique</label><label><input type="checkbox" data-setting="localSync" ${appSettings.localSync ? 'checked' : ''}> Synchronisation locale</label></div>
           <div class="admin-box" style="margin-top:12px">
-            <h4 class="h3" style="margin-top:0">🔄 Synchronisation GitHub des comptes</h4>
-            <p class="muted small">Les comptes créés sont sauvegardés dans le fichier GitHub <code>server-data/app_users_store.json</code> via le serveur. Dans Render, mets <code>GITHUB_USERS_PATH=server-data/app_users_store.json</code>. Le token GitHub reste uniquement dans les variables d’environnement du serveur.</p>
-            <div class="create-user-row">
-              <button class="btn btn--primary" id="btnGithubPullUsers" type="button">Récupérer les comptes depuis GitHub</button>
-              <button class="btn" id="btnGithubPushUsers" type="button">Envoyer les comptes vers GitHub</button>
-              <button class="btn" id="btnGithubStatusUsers" type="button">Vérifier la configuration GitHub</button>
-            </div>
-            <div id="githubSyncStatus" class="notice hidden" style="margin-top:10px"></div>
+            <h4 class="h3" style="margin-top:0">💾 Stockage local</h4>
+            <p class="muted small">Les comptes créés, les paramètres et les journaux restent enregistrés dans ce navigateur. Aucune donnée n’est envoyée vers un service distant.</p>
           </div>
           <button class="btn" id="btnClearCache" type="button">Vider cache local</button>
           <button class="btn btn--primary btnSaveAdminSettings" type="button">Enregistrer paramètres techniques</button>
-          <p class="muted small">Pour Render : ajoute aussi la variable d’environnement <code>PUBLIC_URL=https://ton-site.onrender.com</code> pour activer le ping automatique côté serveur.</p>
+          <p class="muted small">Cette version fonctionne directement en local avec le navigateur.</p>
         </div>
       </div>
     `;
@@ -1689,38 +2014,6 @@
       els.adminLogs.querySelectorAll('.adminTechSubPanel').forEach(p => p.classList.toggle('hidden', p.dataset.techSubpanel !== btn.dataset.techSubtab));
     }));
 
-    function showGithubSyncStatus(message, isError = false) {
-      const box = document.getElementById('githubSyncStatus');
-      if (!box) return;
-      box.classList.remove('hidden');
-      box.innerHTML = `<strong>${isError ? 'Erreur' : 'Information'} :</strong> ${escapeHtml(message)}`;
-    }
-
-    async function runGithubUserSync(direction) {
-      try {
-        const r = await apiPost('/api/admin/sync-github', currentAuthPayload({ direction }));
-        showGithubSyncStatus(direction === 'push'
-          ? `Comptes envoyés vers GitHub : ${r.github?.repo || ''}/${r.github?.path || ''}`
-          : `Comptes récupérés depuis GitHub : ${r.github?.repo || ''}/${r.github?.path || ''}`);
-        await renderAdminLogs({ silent: true });
-      } catch (e) {
-        showGithubSyncStatus(e.data?.error || e.message || 'Synchronisation GitHub impossible.', true);
-      }
-    }
-
-    document.getElementById('btnGithubPullUsers')?.addEventListener('click', () => runGithubUserSync('pull'));
-    document.getElementById('btnGithubPushUsers')?.addEventListener('click', () => runGithubUserSync('push'));
-    document.getElementById('btnGithubStatusUsers')?.addEventListener('click', async () => {
-      try {
-        const r = await apiGet('/api/health');
-        showGithubSyncStatus(r.githubSync
-          ? `GitHub configuré : ${r.github?.repo || ''} / branche ${r.github?.branch || ''} / fichier ${r.github?.path || ''}`
-          : 'GitHub n’est pas encore configuré sur le serveur. Ajoute GITHUB_TOKEN, GITHUB_REPO, GITHUB_BRANCH et GITHUB_USERS_PATH dans les variables d’environnement.');
-      } catch (e) {
-        showGithubSyncStatus(e.message || 'Impossible de vérifier la configuration GitHub.', true);
-      }
-    });
-
     document.getElementById('btnRefreshAdminUsers')?.addEventListener('click', async () => {
       try {
         await renderAdminLogs({ silent: true, openSubtab: 'search' });
@@ -1741,7 +2034,7 @@
       const levels = [...document.querySelectorAll('#adminLevels input:checked')].map(i => i.value);
       const body = currentAuthPayload({ lastName: document.getElementById('adminLastName')?.value, firstName: document.getElementById('adminFirstName')?.value, phone: document.getElementById('adminPhone')?.value, levels });
       try {
-        const r = await apiPost('/api/admin/create-user', body);
+        const r = await localPost('admin-create-user', body);
         window.__LAST_CREATED_USER = { username: r.username, levels: r.levels || levels };
         if (r.userConfig) {
           window.USERS = window.USERS || {};
@@ -1762,9 +2055,9 @@
 
     els.adminLogs.querySelectorAll('.btnForceLogout').forEach(button => button.addEventListener('click', async () => {
       const targetUser = button.dataset.user || ''; if (!targetUser || !confirm(`Déconnecter ${targetUser} ?`)) return;
-      try { await apiPost('/api/admin/force-logout', currentAuthPayload({ targetUser })); await renderAdminLogs({ silent: true }); } catch(e) { alert(e.data?.error || e.message); }
+      try { await localPost('admin-force-logout', currentAuthPayload({ targetUser })); await renderAdminLogs({ silent: true }); } catch(e) { alert(e.data?.error || e.message); }
     }));
-    document.getElementById('btnDisconnectAll')?.addEventListener('click', async () => { if (!confirm('Déconnecter tous les autres appareils ?')) return; try { const r = await apiPost('/api/admin/disconnect-all', currentAuthPayload()); alert(`${r.disconnected} session(s) déconnectée(s).`); await renderAdminLogs({ silent: true }); } catch(e) { alert(e.data?.error || e.message); } });
+    document.getElementById('btnDisconnectAll')?.addEventListener('click', async () => { if (!confirm('Déconnecter tous les autres appareils ?')) return; try { const r = await localPost('admin-disconnect-all', currentAuthPayload()); alert(`${r.disconnected} session(s) déconnectée(s).`); await renderAdminLogs({ silent: true }); } catch(e) { alert(e.data?.error || e.message); } });
     document.getElementById('adminUsersList')?.addEventListener('click', async (event) => {
       const actionBtn = event.target.closest('.btnUserAction');
       const editBtn = event.target.closest('.btnUserEdit');
@@ -1774,7 +2067,7 @@
         if (action === 'disconnect') {
           if (!confirm(`Déconnecter le compte ${targetUser} ?`)) return;
           try {
-            const r = await apiPost('/api/admin/force-logout', currentAuthPayload({ targetUser }));
+            const r = await localPost('admin-force-logout', currentAuthPayload({ targetUser }));
             alert(`${r.disconnected || 0} session(s) déconnectée(s).`);
             await renderAdminLogs({ silent: true, openSubtab: 'search' });
           } catch(e) { alert(e.data?.error || e.message); }
@@ -1783,7 +2076,7 @@
         if (action === 'delete' && !confirm(`Supprimer définitivement le compte ${targetUser} ?`)) return;
         if (action === 'suspend' && !confirm(`Suspendre le compte ${targetUser} jusqu’à réactivation ?`)) return;
         try {
-          const r = await apiPost('/api/admin/update-user', currentAuthPayload({ targetUser, action }));
+          const r = await localPost('admin-update-user', currentAuthPayload({ targetUser, action }));
           if (action === 'delete') {
             dynamicUsers = dynamicUsers.filter(u => u.username !== targetUser);
           } else if (action === 'suspend' || action === 'reactivate') {
@@ -1807,7 +2100,7 @@
         const levels = await chooseUserLevelsWithCheckboxes(currentLevels);
         if (levels === null) return;
         try {
-          const r = await apiPost('/api/admin/update-user', currentAuthPayload({ targetUser, action: 'editProfile', lastName, firstName, phone, levels }));
+          const r = await localPost('admin-update-user', currentAuthPayload({ targetUser, action: 'editProfile', lastName, firstName, phone, levels }));
           upsertDynamicUser({ ...(r.user || {}), oldUsername: targetUser, username: r.username || targetUser, levels: r.levels || levels });
           rerenderCurrentUserSearch();
           alert(`Compte modifié. Nouvel identifiant : ${r.username || targetUser}`);
@@ -2020,12 +2313,12 @@
       adminCatalogDraft = normalizeCustomCatalog(adminCatalogDraft);
       const settings = normalizeAppSettings({ ...collectAdminSettings(), customCatalog: adminCatalogDraft });
       const status = document.getElementById('adminCatalogStatus');
-      let savedOnServer = true;
+      let savedLocally = true;
       try {
-        await apiPost('/api/admin/save-settings', currentAuthPayload({ settings }));
-        if (status) status.textContent = messageOk || 'Niveaux, matières et sujets enregistrés sur le serveur et appliqués.';
+        await localPost('admin-save-settings', currentAuthPayload({ settings }));
+        if (status) status.textContent = messageOk || 'Niveaux, matières et sujets enregistrés localement et appliqués.';
       } catch (e) {
-        savedOnServer = false;
+        savedLocally = false;
         if (status) status.textContent = messageLocal || 'Mode local : modifications enregistrées dans ce navigateur et appliquées.';
       }
       appSettings = settings;
@@ -2034,7 +2327,7 @@
       adminDECatalogIndexCache = null;
       bank = getQuestionBank();
       updateStartInfo();
-      return savedOnServer;
+      return savedLocally;
     }
 
     let validatedImportContext = null;
@@ -2108,7 +2401,7 @@
         appSettings = normalizeAppSettings({ ...collectAdminSettings(), customCatalog: adminCatalogDraft, customQuestions: remainingCustomQuestions });
         localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
         notifySynthesisQuestionsUpdated('settings');
-        try { await apiPost('/api/admin/save-settings', currentAuthPayload({ settings: appSettings })); } catch (_) {}
+        try { await localPost('admin-save-settings', currentAuthPayload({ settings: appSettings })); } catch (_) {}
         adminDECatalogIndexCache = null; bank = getQuestionBank(); updateStartInfo(); renderCatalogAdmin(); invalidateImportContext();
         const status = document.getElementById('adminCatalogStatus'); if (status) status.textContent = 'Niveau retiré et modifications appliquées.';
       });
@@ -2127,7 +2420,7 @@
         appSettings = normalizeAppSettings({ ...collectAdminSettings(), customCatalog: adminCatalogDraft, customQuestions });
         localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
         notifySynthesisQuestionsUpdated('settings');
-        try { await apiPost('/api/admin/save-settings', currentAuthPayload({ settings: appSettings })); } catch (_) {}
+        try { await localPost('admin-save-settings', currentAuthPayload({ settings: appSettings })); } catch (_) {}
         adminDECatalogIndexCache = null; bank = getQuestionBank(); updateStartInfo(); renderCatalogAdmin(clean); invalidateImportContext();
         const status = document.getElementById('adminCatalogStatus'); if (status) status.textContent = 'Nom du niveau modifié et appliqué.';
       });
@@ -2160,7 +2453,7 @@
         appSettings = normalizeAppSettings({ ...collectAdminSettings(), customCatalog: adminCatalogDraft, customQuestions });
         localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
         notifySynthesisQuestionsUpdated('settings');
-        try { await apiPost('/api/admin/save-settings', currentAuthPayload({ settings: appSettings })); } catch (_) {}
+        try { await localPost('admin-save-settings', currentAuthPayload({ settings: appSettings })); } catch (_) {}
         adminDECatalogIndexCache = null; bank = getQuestionBank(); updateStartInfo(); renderCatalogAdmin(level, clean); invalidateImportContext();
         const status = document.getElementById('adminCatalogStatus'); if (status) status.textContent = 'Nom de la matière modifié et appliqué.';
       });
@@ -2198,8 +2491,8 @@
         const remainingCustomQuestions = (Array.isArray(appSettings.customQuestions) ? appSettings.customQuestions : []).filter(q => !(q.level === level && q.subject === subject && q.topic === topic));
         const settings = normalizeAppSettings({ ...collectAdminSettings(), customCatalog: adminCatalogDraft, customQuestions: remainingCustomQuestions });
         const status = document.getElementById('adminCatalogStatus');
-        let savedOnServer = true;
-        try { await apiPost('/api/admin/save-settings', currentAuthPayload({ settings })); } catch (_) { savedOnServer = false; }
+        let savedLocally = true;
+        try { await localPost('admin-save-settings', currentAuthPayload({ settings })); } catch (_) { savedLocally = false; }
         appSettings = settings;
         localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
         notifySynthesisQuestionsUpdated('settings');
@@ -2209,7 +2502,7 @@
         invalidateImportContext();
         const editor = document.getElementById('adminTopicEditor');
         if (editor) editor.classList.add('hidden');
-        if (status) status.textContent = savedOnServer ? 'Sujet retiré et enregistré sur le serveur.' : 'Sujet retiré en mode local dans ce navigateur.';
+        if (status) status.textContent = savedLocally ? 'Sujet retiré et enregistré localement.' : 'Sujet retiré en mode local dans ce navigateur.';
       });
       function getQuestionsForSelectedTopic() {
         const level = levelSelect?.value || '';
@@ -2267,15 +2560,15 @@
         const remainingCustom = currentCustom.filter(q => !toRemove.has(q.id));
         const deletedQuestionIds = Array.from(new Set([...(appSettings.deletedQuestionIds || []), ...checkedIds]));
         const settings = normalizeAppSettings({ ...collectAdminSettings(), customCatalog: adminCatalogDraft, customQuestions: remainingCustom, deletedQuestionIds });
-        let savedOnServer = true;
-        try { await apiPost('/api/admin/save-settings', currentAuthPayload({ settings })); } catch (_) { savedOnServer = false; }
+        let savedLocally = true;
+        try { await localPost('admin-save-settings', currentAuthPayload({ settings })); } catch (_) { savedLocally = false; }
         appSettings = settings;
         localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
         notifySynthesisQuestionsUpdated('settings');
         adminDECatalogIndexCache = null; bank = getQuestionBank();
         updateStartInfo();
         renderTopicEditor();
-        if (status) status.textContent = `${checkedIds.length} doublon(s) supprimé(s). ${savedOnServer ? 'Enregistré sur le serveur.' : 'Mode local : enregistré dans ce navigateur.'}`;
+        if (status) status.textContent = `${checkedIds.length} doublon(s) supprimé(s). Enregistré localement.`;
       }
 
       function buildQuestionStructureHtml(q, typeOverride = null) {
@@ -2485,7 +2778,7 @@
         }
         box.innerHTML = `
           <h4 class="h3">Modifier les questions du sujet</h4>
-          <p class="muted small">${questions.length} question(s) trouvée(s). Les modifications sont sauvegardées dans les paramètres du site : serveur si disponible, local sinon.</p>
+          <p class="muted small">${questions.length} question(s) trouvée(s). Les modifications sont sauvegardées dans les paramètres du site : stockage local du navigateur.</p>
           <div class="topic-editor-actions">
             <button class="btn" id="btnShowTopicDuplicates" type="button">Afficher les doublons</button>
             <button class="btn btn--danger" id="btnDeleteTopicDuplicates" type="button">Supprimer</button>
@@ -2560,8 +2853,8 @@
         const deletedQuestionIds = Array.from(new Set([...(appSettings.deletedQuestionIds || []), ...removedIds]));
         const settings = normalizeAppSettings({ ...collectAdminSettings(), customCatalog: adminCatalogDraft, customQuestions: Array.from(byId.values()), deletedQuestionIds });
         try {
-          await apiPost('/api/admin/save-settings', currentAuthPayload({ settings }));
-          if (status) status.textContent = `${edited.length} question(s) modifiée(s), ${removedIds.length} question(s) retirée(s) et enregistrée(s) sur le serveur.`;
+          await localPost('admin-save-settings', currentAuthPayload({ settings }));
+          if (status) status.textContent = `${edited.length} question(s) modifiée(s), ${removedIds.length} question(s) retirée(s) et enregistrée(s) localement.`;
         } catch (e) {
           if (status) status.textContent = `${edited.length} question(s) modifiée(s), ${removedIds.length} question(s) retirée(s) en mode local dans ce navigateur.`;
         }
@@ -2684,11 +2977,11 @@
           customCatalog: catalog,
           customQuestions: Array.from(byId.values())
         });
-        let savedOnServer = true;
+        let savedLocally = true;
         try {
-          await apiPost('/api/admin/save-settings', currentAuthPayload({ settings }));
+          await localPost('admin-save-settings', currentAuthPayload({ settings }));
         } catch (_) {
-          savedOnServer = false;
+          savedLocally = false;
         }
         appSettings = settings;
         localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
@@ -2698,7 +2991,7 @@
         renderCatalogAdmin(validatedImportContext.level, validatedImportContext.subject, validatedImportContext.topic);
         validatedImportContext = { ...validatedImportContext };
         setImportControlsEnabled(true);
-        if (status) status.textContent = `${imported.length} question(s) ajoutée(s) à ${validatedImportContext.level} / ${validatedImportContext.subject} / ${validatedImportContext.topic}. ${savedOnServer ? 'Enregistré sur le serveur.' : 'Mode local : enregistré dans ce navigateur.'} Total importé : ${appSettings.customQuestions.length}.`;
+        if (status) status.textContent = `${imported.length} question(s) ajoutée(s) à ${validatedImportContext.level} / ${validatedImportContext.subject} / ${validatedImportContext.topic}. Enregistré localement. Total importé : ${appSettings.customQuestions.length}.`;
         setTimeout(collapseAdminPanels, 250);
       } catch(e) {
         if (status) status.textContent = e.data?.error || e.message;
@@ -2709,7 +3002,7 @@
     els.adminLogs.querySelectorAll('.btnSaveAdminSettings').forEach(btn => btn.addEventListener('click', async () => {
       const settings = collectAdminSettings();
       try {
-        await apiPost('/api/admin/save-settings', currentAuthPayload({ settings }));
+        await localPost('admin-save-settings', currentAuthPayload({ settings }));
         appSettings = settings;
         localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
         notifySynthesisQuestionsUpdated('settings');
@@ -2724,7 +3017,7 @@
         alert('Paramètres enregistrés et appliqués immédiatement sur les quiz.');
         collapseAdminPanels();
       } catch(e) {
-        // Mode local sans PostgreSQL : les paramètres restent appliqués dans ce navigateur.
+        // Mode local : les paramètres restent appliqués dans ce navigateur.
         appSettings = settings;
         localStorage.setItem(STORAGE_KEYS.appSettings, JSON.stringify(appSettings));
         notifySynthesisQuestionsUpdated('settings');
@@ -2736,13 +3029,13 @@
           lastTimedQuestionIndex = -1;
           renderQuiz();
         }
-        alert('Mode local : paramètres enregistrés et appliqués dans ce navigateur. Pour les partager en ligne, connecte PostgreSQL/Render.');
+        alert('Paramètres enregistrés et appliqués dans ce navigateur.');
         collapseAdminPanels();
       }
     }));
   }
 
-  const QUESTION_TIME_SEC = 40; // valeur par défaut si aucun paramètre serveur
+  const QUESTION_TIME_SEC = 40; // valeur par défaut si aucun paramètre local
   const MAX_QUESTIONS_PER_SESSION = 100;
   let questionTimerId = null;
   let questionTimerRemaining = 0;
@@ -3693,7 +3986,7 @@
     if (isFreeTrialUser() && normalizeKey(level) === normalizeKey(FREE_TRIAL_LEVEL)) return [FREE_TRIAL_SUBJECT];
     const unique = (arr) => Array.from(new Set((arr || []).map((s) => safeText(s).trim()).filter(Boolean)));
 
-    // Comptes locaux et comptes serveur : pour A1, L1 et L2, on affiche uniquement
+    // Comptes locaux : pour A1, L1 et L2, on affiche uniquement
     // les matières liées au niveau choisi. Aucune matière d'un autre niveau ne doit remonter
     // depuis la banque globale de questions.
     const restrictedSubjects = getAllowedSubjectsForLevel(level);
@@ -3702,7 +3995,7 @@
       .filter((q) => !level || level === "Tous les niveaux" || levelMatches(q.level, level))
       .map((q) => q.subject);
 
-    // Liste imposée par niveau : pour les comptes locaux et les comptes serveur,
+    // Liste imposée par niveau : pour les comptes locaux,
     // un niveau ne doit afficher QUE les matières prévues pour ce niveau.
     // On n'ajoute donc pas les matières trouvées dans la banque globale de questions,
     // car elles peuvent appartenir à un autre niveau.
@@ -5444,7 +5737,7 @@ els.reviewList.appendChild(head);
 
   // init
   (async () => {
-    await loadAppSettingsFromServer();
+    await loadAppSettingsFromLocal();
     settings = loadSettings();
     adminDECatalogIndexCache = null; bank = getQuestionBank();
     if (await isAccessGranted()) {

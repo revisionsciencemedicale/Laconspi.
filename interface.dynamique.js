@@ -235,7 +235,7 @@
     const first = text(cfg?.first_name || cfg?.firstName || '');
     const last = text(cfg?.last_name || cfg?.lastName || '');
     const full = text(cfg?.full_name || cfg?.fullName || `${last} ${first}`.trim());
-    const onlineCreated = !!(cfg && (cfg.dynamic || cfg.source === 'server' || full || first || last));
+    const onlineCreated = !!(cfg && (cfg.dynamic || cfg.source === 'local' || full || first || last));
 
     if (badge) {
       if (current === '__ESSAI_GRATUIT__') badge.textContent = 'Essai gratuit';
