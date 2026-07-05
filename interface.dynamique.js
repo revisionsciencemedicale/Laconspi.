@@ -243,6 +243,12 @@
     }
     if (role) role.textContent = lv && lv !== 'Niveau' ? lv : 'Niveau non défini';
     if (level) level.textContent = lv;
+    const dashboardBtn = $('#qdashNavQuizDashboard');
+    const oldDashboard = $('#btnQuizDashboard');
+    if (dashboardBtn) dashboardBtn.classList.toggle('hidden', !oldDashboard || oldDashboard.classList.contains('hidden') || oldDashboard.style.display === 'none');
+    const quizSettingsBtn = $('#qdashNavQuizSettings');
+    const oldQuizSettings = $('#btnQuizSettings');
+    if (quizSettingsBtn) quizSettingsBtn.classList.toggle('hidden', !oldQuizSettings || oldQuizSettings.classList.contains('hidden') || oldQuizSettings.style.display === 'none');
     const adminBtn = $('#qdashNavAdmin');
     const oldAdmin = $('#btnAdmin');
     if (adminBtn) adminBtn.classList.toggle('hidden', !oldAdmin || oldAdmin.classList.contains('hidden'));
@@ -271,6 +277,8 @@
         <button type="button" id="qdashNavDictionary" class="qdash-nav-item"><span>▤</span> Dictionnaire Médical</button>
         <button type="button" id="qdashNavResumes" class="qdash-nav-item"><span>📚</span> Résumés de Cours</button>
         <button type="button" id="qdashNavExam" class="qdash-nav-item"><span>◒</span> Examens de fin de Formation</button>
+        <button type="button" id="qdashNavQuizDashboard" class="qdash-nav-item hidden"><span>📊</span> Tableau de bord des quiz</button>
+        <button type="button" id="qdashNavQuizSettings" class="qdash-nav-item hidden"><span>⚙️</span> Paramètres des quiz</button>
         <div class="qdash-nav-title qdash-admin-title">Administration</div>
         <button type="button" id="qdashNavAdmin" class="qdash-nav-item hidden"><span>⚙</span> Administration</button>
       </nav>
@@ -420,6 +428,8 @@
     $('#qdashNavQuiz')?.addEventListener('click', () => { setActive('Quiz'); forwardClick('btnHome'); forwardClick('btnModeQuiz'); showQuizMode('normal'); closeMenu(); });
     $('#qdashNavDictionary')?.addEventListener('click', () => { setActive('Dictionary'); forwardClick('btnDictionary'); closeMenu(); });
     $('#qdashNavResumes')?.addEventListener('click', () => { setActive('Resumes'); forwardClick('btnResumes'); closeMenu(); });
+    $('#qdashNavQuizDashboard')?.addEventListener('click', () => { setActive('QuizDashboard'); forwardClick('btnQuizDashboard'); closeMenu(); });
+    $('#qdashNavQuizSettings')?.addEventListener('click', () => { setActive('QuizSettings'); forwardClick('btnQuizSettings'); closeMenu(); });
     $('#qdashNavExam')?.addEventListener('click', () => {
       setActive('Exam');
       window.__QDASH_OPENING_EFF_FROM_MENU__ = true;
@@ -886,6 +896,7 @@
     };
 
     window.addEventListener('qdash:questions-updated', refreshSynthesisIfVisible);
+    window.addEventListener('qdash:session-changed', () => { syncUserBadge(); updateDashboardStats(); });
     window.addEventListener('storage', (event) => {
       if (!event || event.key === 'quizRevision.appSettings.v1') refreshSynthesisIfVisible();
     });

@@ -16,6 +16,8 @@
     screenAdmin: document.getElementById("screenAdmin"),
     screenDictionary: document.getElementById("screenDictionary"),
     screenResumes: document.getElementById("screenResumes"),
+    screenQuizDashboard: document.getElementById("screenQuizDashboard"),
+    screenQuizSettings: document.getElementById("screenQuizSettings"),
 
     selectLevel: document.getElementById("selectLevel"),
     selectSubject: document.getElementById("selectSubject"),
@@ -58,6 +60,14 @@
     btnBack: document.getElementById("btnBack"),
     btnHomeQuiz: document.getElementById("btnHomeQuiz"),
     currentUser: document.getElementById("currentUser"),
+    btnQuizDashboard: document.getElementById("btnQuizDashboard"),
+    btnQuizSettings: document.getElementById("btnQuizSettings"),
+    quizDashboardContent: document.getElementById("quizDashboardContent"),
+    dashboardSubjectSelect: document.getElementById("dashboardSubjectSelect"),
+    btnRefreshQuizDashboard: document.getElementById("btnRefreshQuizDashboard"),
+    btnBackToStartFromQuizDashboard: document.getElementById("btnBackToStartFromQuizDashboard"),
+    quizSettingsContent: document.getElementById("quizSettingsContent"),
+    btnBackToStartFromQuizSettings: document.getElementById("btnBackToStartFromQuizSettings"),
     btnAdmin: document.getElementById("btnAdmin"),
     adminLogs: document.getElementById("adminLogs"),
     btnBackToStartFromAdmin: document.getElementById("btnBackToStartFromAdmin"),
@@ -83,6 +93,11 @@
     sessionToken: "quizRevision.sessionToken.v1",
     deviceId: "quizRevision.deviceId.v1",
     appSettings: "quizRevision.appSettings.v1",
+    accountType: "quizRevision.accountType.v1",
+    userQuizSettings: "quizRevision.userQuizSettings.v1",
+    quizDashboard: "quizRevision.quizDashboard.v1",
+    cheatAttempts: "quizRevision.cheatAttempts.v1",
+    quizDashboardSubject: "quizRevision.quizDashboard.subject.v1",
     adminCache: "quizRevision.adminCache.v1",
     localUsers: "quizRevision.localUsers.v1",
     activityLog: "quizRevision.activityLog.v1",
@@ -350,6 +365,45 @@
 
   let appSettings = { ...DEFAULT_APP_SETTINGS };
 
+  const DEFAULT_USER_QUIZ_SETTINGS = {
+    shuffleQuestions: true,
+    shuffleAnswers: false,
+    instantCorrection: false,
+    finalScore: true,
+    negativePoints: true,
+    photoRequired: false,
+    cheatDetection: false,
+    antiTabChange: true,
+    notifyCheat: true,
+    maxWarnings: 3,
+    autoSubmitCheat: false,
+  };
+
+  const QUIZ_SETTINGS_FIELDS = [
+    { key: 'shuffleQuestions', label: 'Mélanger les questions', help: 'Change l’ordre des questions à chaque quiz.' },
+    { key: 'shuffleAnswers', label: 'Mélanger les réponses', help: 'Change l’ordre des propositions de réponses.' },
+    { key: 'instantCorrection', label: 'Afficher la correction immédiatement', help: 'Montre la bonne réponse juste après le choix.' },
+    { key: 'finalScore', label: 'Afficher la note finale', help: 'Affiche la note à la fin du quiz.' },
+    { key: 'negativePoints', label: 'Activer les points négatifs', help: 'Une mauvaise réponse peut retirer des points.' },
+    { key: 'photoRequired', label: 'Prise de vue obligatoire avant quiz', help: 'Demande une prise de vue locale avant le démarrage.' },
+    { key: 'cheatDetection', label: 'Gestion des tentatives de tricherie', help: 'Active la surveillance locale pendant le quiz.' },
+  ];
+
+  const QUIZ_REWARD_SCALE = [
+    { min: 20, max: 20, emoji: '👑', title: 'Roi du Quiz', extra: '🏆🏆🏆', className: 'reward-king', message: 'Exceptionnel ! Tu fais partie des meilleurs.' },
+    { min: 19, max: 19, emoji: '🏆', title: 'Grand Champion', extra: '', className: 'reward-trophy', message: 'Exceptionnel ! Tu fais partie des meilleurs.' },
+    { min: 18, max: 18, emoji: '🏅', title: 'Médaille d’Or', extra: '', className: 'reward-gold', message: 'Très beau travail. Continue ainsi.' },
+    { min: 16, max: 17, emoji: '🥇', title: 'Excellent', extra: '', className: 'reward-gold', message: 'Très beau travail. Continue ainsi.' },
+    { min: 14, max: 15, emoji: '🥈', title: 'Très Bien', extra: '', className: 'reward-silver', message: 'Tu progresses régulièrement.' },
+    { min: 12, max: 13, emoji: '🥉', title: 'Bien', extra: '', className: 'reward-bronze', message: 'Tu progresses régulièrement.' },
+    { min: 10, max: 11, emoji: '⭐', title: 'En progression', extra: '', className: 'reward-star', message: 'Tu es sur la bonne voie.' },
+    { min: 8, max: 9, emoji: '🍬', title: 'Bonbon de Courage', extra: '', className: 'reward-candy', message: 'Encore quelques efforts et tu franchiras un cap.' },
+    { min: 6, max: 7, emoji: '🍪', title: 'Biscuit de Motivation', extra: '', className: 'reward-cookie', message: 'Ne baisse pas les bras.' },
+    { min: 4, max: 5, emoji: '🧹', title: 'Balai des Révisions', extra: '', className: 'reward-broom', message: 'Une bonne révision te fera remonter rapidement.' },
+    { min: 2, max: 3, emoji: '🪣', title: 'Seau de Motivation', extra: '', className: 'reward-bucket', message: 'Les champions commencent toujours quelque part.' },
+    { min: 0, max: 1, emoji: '🧸', title: 'Doudou Anti-Stress', extra: '', className: 'reward-doudou', message: 'Aujourd’hui est difficile, demain sera meilleur.' },
+  ];
+
   function toBool(value, fallback = false) {
     if (typeof value === "boolean") return value;
     if (value === "true") return true;
@@ -592,6 +646,7 @@
     }
 
     const user = localStorage.getItem(STORAGE_KEYS.user);
+    saveLocalCheatAttempt(attempt, user);
     logActivity(user, 'cheat_attempt', { reason: attempt.reason, count: session.cheatAttempts.length, at: attempt.at });
   }
 
@@ -1170,6 +1225,392 @@
     localStorage.setItem(key, JSON.stringify(value));
   }
 
+  function getUserStorageKey(username = null) {
+    const current = username === null ? (localStorage.getItem(STORAGE_KEYS.user) || '') : String(username || '');
+    return normalizeKey(current) || 'invite';
+  }
+
+  function getAccountType(username = null) {
+    const current = username === null ? (localStorage.getItem(STORAGE_KEYS.user) || '') : String(username || '');
+    if (isFreeTrialUser(current)) return 'essai';
+    if (isAdminUsername(current)) return 'administrateur';
+    return current ? 'utilisateur' : '';
+  }
+
+  function isSimpleUser(username = null) {
+    return getAccountType(username) === 'utilisateur';
+  }
+
+  function persistAccountType(username = null) {
+    const type = getAccountType(username);
+    if (type) localStorage.setItem(STORAGE_KEYS.accountType, type);
+    return type;
+  }
+
+  function normalizeUserQuizSettings(raw = {}) {
+    const merged = { ...DEFAULT_USER_QUIZ_SETTINGS, ...(raw || {}) };
+    return {
+      shuffleQuestions: toBool(merged.shuffleQuestions, true),
+      shuffleAnswers: toBool(merged.shuffleAnswers, false),
+      instantCorrection: toBool(merged.instantCorrection, false),
+      finalScore: toBool(merged.finalScore, true),
+      negativePoints: toBool(merged.negativePoints, true),
+      photoRequired: toBool(merged.photoRequired, false),
+      cheatDetection: toBool(merged.cheatDetection, false),
+      antiTabChange: toBool(merged.antiTabChange, true),
+      notifyCheat: toBool(merged.notifyCheat, true),
+      maxWarnings: Math.max(1, Math.floor(toPositiveNumber(merged.maxWarnings, 3))),
+      autoSubmitCheat: toBool(merged.autoSubmitCheat, false),
+    };
+  }
+
+  function readAllUserQuizSettings() {
+    return readJsonStorage(STORAGE_KEYS.userQuizSettings, {});
+  }
+
+  function readUserQuizSettings(username = null) {
+    const all = readAllUserQuizSettings();
+    return normalizeUserQuizSettings(all[getUserStorageKey(username)] || {});
+  }
+
+  function writeUserQuizSettings(next, username = null) {
+    const all = readAllUserQuizSettings();
+    all[getUserStorageKey(username)] = normalizeUserQuizSettings(next);
+    writeJsonStorage(STORAGE_KEYS.userQuizSettings, all);
+    return all[getUserStorageKey(username)];
+  }
+
+  function applyUserQuizSettingsToRuntime(username = null) {
+    if (!isSimpleUser(username)) {
+      applyRuntimeSettings();
+      return appSettings;
+    }
+    const localSettings = readUserQuizSettings(username);
+    appSettings = normalizeAppSettings({
+      ...appSettings,
+      shuffleQuestions: localSettings.shuffleQuestions,
+      shuffleAnswers: localSettings.shuffleAnswers,
+      instantCorrection: localSettings.instantCorrection,
+      finalScore: localSettings.finalScore,
+      negativePoints: localSettings.negativePoints,
+      photoRequired: localSettings.photoRequired,
+      cheatDetection: localSettings.cheatDetection,
+      antiTabChange: localSettings.cheatDetection && localSettings.antiTabChange,
+      notifyCheat: localSettings.cheatDetection && localSettings.notifyCheat,
+      maxWarnings: localSettings.maxWarnings,
+      autoSubmitCheat: localSettings.cheatDetection && localSettings.autoSubmitCheat,
+    });
+    applyRuntimeSettings();
+    return appSettings;
+  }
+
+  function getLocalCheatCounter(username = null) {
+    const all = readJsonStorage(STORAGE_KEYS.cheatAttempts, {});
+    const row = all[getUserStorageKey(username)] || { total: 0, attempts: [] };
+    return {
+      total: Number(row.total || 0),
+      attempts: Array.isArray(row.attempts) ? row.attempts : []
+    };
+  }
+
+  function saveLocalCheatAttempt(attempt, username = null) {
+    const all = readJsonStorage(STORAGE_KEYS.cheatAttempts, {});
+    const key = getUserStorageKey(username);
+    const current = getLocalCheatCounter(username);
+    const nextAttempts = [...current.attempts, attempt].slice(-100);
+    all[key] = { total: current.total + 1, attempts: nextAttempts };
+    writeJsonStorage(STORAGE_KEYS.cheatAttempts, all);
+  }
+
+  function resetLocalCheatCounter(username = null) {
+    const all = readJsonStorage(STORAGE_KEYS.cheatAttempts, {});
+    all[getUserStorageKey(username)] = { total: 0, attempts: [] };
+    writeJsonStorage(STORAGE_KEYS.cheatAttempts, all);
+  }
+
+  function getQuizReward(note) {
+    const n = Math.max(0, Math.min(20, Math.round(Number(note) || 0)));
+    return QUIZ_REWARD_SCALE.find((row) => n >= row.min && n <= row.max) || QUIZ_REWARD_SCALE[QUIZ_REWARD_SCALE.length - 1];
+  }
+
+  function getPerformanceClass(note) {
+    const n = Number(note) || 0;
+    if (n >= 16) return 'perf-excellent';
+    if (n >= 14) return 'perf-verygood';
+    if (n >= 10) return 'perf-medium';
+    if (n >= 6) return 'perf-low';
+    return 'perf-bad';
+  }
+
+  function getPerformanceLabel(note) {
+    const n = Number(note) || 0;
+    if (n >= 16) return '🟢 Excellent';
+    if (n >= 14) return '🔵 Très bien';
+    if (n >= 10) return '🟡 Moyen';
+    if (n >= 6) return '🟠 Faible';
+    return '🔴 À améliorer';
+  }
+
+  function readQuizDashboardStore() {
+    const store = readJsonStorage(STORAGE_KEYS.quizDashboard, {});
+    return store && typeof store === 'object' ? store : {};
+  }
+
+  function getCurrentUserDashboardEntries(username = null) {
+    const store = readQuizDashboardStore();
+    const list = store[getUserStorageKey(username)] || [];
+    return Array.isArray(list) ? list.filter(Boolean) : [];
+  }
+
+  function writeCurrentUserDashboardEntries(entries, username = null) {
+    const store = readQuizDashboardStore();
+    store[getUserStorageKey(username)] = Array.isArray(entries) ? entries.slice(-500) : [];
+    writeJsonStorage(STORAGE_KEYS.quizDashboard, store);
+  }
+
+  function saveQuizDashboardResult(result) {
+    try {
+      const user = localStorage.getItem(STORAGE_KEYS.user) || '';
+      if (!user || isFreeTrialUser(user)) return;
+      const noteValue = Math.max(0, Math.min(20, Number(getNoteSur20(result)) || 0));
+      const reward = getQuizReward(noteValue);
+      const entry = {
+        id: `quiz-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        at: Date.now(),
+        level: safeText(session.level || ''),
+        subject: safeText(session.subject || 'Toutes les matières'),
+        topic: safeText(session.topic || 'Tous les sujets'),
+        note20: noteValue,
+        correct: Number(result.correct || 0),
+        wrong: Number(result.wrong || 0),
+        answered: Number(result.answered || 0),
+        total: Number(result.total || 0),
+        score: Number(result.score || 0),
+        percentage: Number(result.total || 0) ? Math.round((Number(result.correct || 0) / Number(result.total || 1)) * 100) : 0,
+        success: noteValue >= 10,
+        rewardEmoji: reward.emoji,
+        rewardTitle: reward.title,
+        rewardExtra: reward.extra || '',
+        rewardClass: reward.className,
+        encouragement: reward.message,
+        cheatAttempts: Array.isArray(session.cheatAttempts) ? session.cheatAttempts.length : 0,
+      };
+      const entries = getCurrentUserDashboardEntries(user);
+      entries.push(entry);
+      writeCurrentUserDashboardEntries(entries, user);
+      window.dispatchEvent(new CustomEvent('quizDashboardUpdated', { detail: { entry } }));
+    } catch (e) {
+      console.warn('Tableau de bord non mis à jour:', e.message);
+    }
+  }
+
+  function average(values) {
+    const nums = (values || []).map(Number).filter(Number.isFinite);
+    return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+  }
+
+  function longestSuccessStreak(entries) {
+    let best = 0;
+    let current = 0;
+    for (const entry of (entries || []).slice().sort((a, b) => (a.at || 0) - (b.at || 0))) {
+      if (Number(entry.note20 || 0) >= 10) {
+        current += 1;
+        best = Math.max(best, current);
+      } else {
+        current = 0;
+      }
+    }
+    return best;
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value).replace(/"/g, '&quot;');
+  }
+
+  function collectDashboardSubjects(entries = []) {
+    const set = new Set((entries || []).map((e) => safeText(e.subject)).filter(Boolean));
+    try {
+      const source = Array.isArray(bank) ? bank : getQuestionBank();
+      source.forEach((q) => {
+        const subject = safeText(q && q.subject).trim();
+        if (subject && subject !== 'Toutes les matières') set.add(subject);
+      });
+    } catch (_) {}
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  }
+
+  function makeSparkline(entries, width = 620, height = 170) {
+    const list = (entries || []).slice(-16);
+    if (!list.length) {
+      return `<div class="quiz-chart-empty">Aucune note à afficher pour l’instant.</div>`;
+    }
+    const pad = 24;
+    const points = list.map((entry, index) => {
+      const x = list.length === 1 ? width / 2 : pad + (index * (width - pad * 2)) / (list.length - 1);
+      const y = height - pad - ((Number(entry.note20 || 0) / 20) * (height - pad * 2));
+      return { x, y, note: Number(entry.note20 || 0), entry };
+    });
+    const line = points.map((p) => `${p.x},${p.y}`).join(' ');
+    const circles = points.map((p) => `<circle cx="${p.x}" cy="${p.y}" r="4"><title>${formatNoteSur20(p.note)}/20 - ${escapeHtml(p.entry.topic || '')}</title></circle>`).join('');
+    const labels = [0, 5, 10, 15, 20].map((n) => {
+      const y = height - pad - ((n / 20) * (height - pad * 2));
+      return `<line x1="${pad}" y1="${y}" x2="${width - pad}" y2="${y}" class="quiz-chart-grid"/><text x="4" y="${y + 4}" class="quiz-chart-label">${n}</text>`;
+    }).join('');
+    return `<svg class="quiz-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Graphique d’évolution des notes">${labels}<polyline points="${line}" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${circles}</svg>`;
+  }
+
+  function getTopicsForDashboardSubject(subject) {
+    const set = new Set();
+    try {
+      const source = Array.isArray(bank) ? bank : getQuestionBank();
+      source.forEach((q) => {
+        if (subject && subject !== 'Toutes les matières' && normalizeKey(q.subject) !== normalizeKey(subject)) return;
+        const topic = safeText(q.topic || 'Tous les sujets').trim();
+        if (topic) set.add(topic);
+      });
+    } catch (_) {}
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+  }
+
+  function renderQuizDashboard() {
+    if (!els.quizDashboardContent) return;
+    const entries = getCurrentUserDashboardEntries();
+    const subjects = collectDashboardSubjects(entries);
+    const storedSubject = localStorage.getItem(STORAGE_KEYS.quizDashboardSubject) || '';
+    const selectedSubject = subjects.includes(storedSubject) ? storedSubject : (subjects[0] || 'Toutes les matières');
+    if (els.dashboardSubjectSelect) {
+      setOptions(els.dashboardSubjectSelect, subjects.length ? subjects : ['Toutes les matières'], selectedSubject);
+      els.dashboardSubjectSelect.value = selectedSubject;
+    }
+    const filtered = selectedSubject && selectedSubject !== 'Toutes les matières'
+      ? entries.filter((e) => normalizeKey(e.subject) === normalizeKey(selectedSubject))
+      : entries;
+    const notes = filtered.map((e) => Number(e.note20 || 0));
+    const total = filtered.length;
+    const avg = average(notes);
+    const uniqueTopics = new Set(filtered.map((e) => safeText(e.topic)).filter(Boolean));
+    const medals = filtered.filter((e) => Number(e.note20 || 0) >= 12).length;
+    const trophies = filtered.filter((e) => Number(e.note20 || 0) >= 19).length;
+    const streak = longestSuccessStreak(filtered);
+    const successRate = total ? Math.round((filtered.filter((e) => Number(e.note20 || 0) >= 10).length / total) * 100) : 0;
+    const statsHtml = `
+      <div class="quiz-stat-grid">
+        <div class="quiz-stat-card"><span>🏆</span><strong>${total}</strong><small>Total des participations</small></div>
+        <div class="quiz-stat-card"><span>📚</span><strong>${uniqueTopics.size}</strong><small>Sujets étudiés</small></div>
+        <div class="quiz-stat-card ${getPerformanceClass(avg)}"><span>⭐</span><strong>${formatNoteSur20(avg)}/20</strong><small>Moyenne générale</small></div>
+        <div class="quiz-stat-card"><span>🥇</span><strong>${medals}</strong><small>Médailles gagnées</small></div>
+        <div class="quiz-stat-card"><span>🏆</span><strong>${trophies}</strong><small>Trophées gagnés</small></div>
+        <div class="quiz-stat-card"><span>🔥</span><strong>${streak}</strong><small>Plus longue série</small></div>
+        <div class="quiz-stat-card"><span>🎯</span><strong>${successRate}%</strong><small>Réussite globale</small></div>
+      </div>`;
+
+    const topicNames = Array.from(new Set([...getTopicsForDashboardSubject(selectedSubject), ...filtered.map((e) => safeText(e.topic)).filter(Boolean)]));
+    const topicCards = topicNames.length ? topicNames.map((topic) => {
+      const rows = filtered.filter((e) => normalizeKey(e.topic) === normalizeKey(topic));
+      const topicNotes = rows.map((e) => Number(e.note20 || 0));
+      const topicAvg = average(topicNotes);
+      const best = topicNotes.length ? Math.max(...topicNotes) : 0;
+      const low = topicNotes.length ? Math.min(...topicNotes) : 0;
+      const topicStreak = longestSuccessStreak(rows);
+      const topicSuccess = rows.length ? Math.round((rows.filter((e) => Number(e.note20 || 0) >= 10).length / rows.length) * 100) : 0;
+      const reward = getQuizReward(best || topicAvg || 0);
+      const progress = Math.round(((topicAvg || 0) / 20) * 100);
+      const history = rows.length ? rows.slice(-8).map((e) => `<span class="quiz-note-chip ${getPerformanceClass(e.note20)}">${formatNoteSur20(Number(e.note20 || 0))}</span>`).join('') : '<span class="muted small">Aucune participation</span>';
+      return `
+        <article class="quiz-topic-card ${getPerformanceClass(topicAvg)}">
+          <div class="quiz-topic-head"><h3>📚 ${escapeHtml(topic)}</h3><span class="quiz-reward ${reward.className}">${reward.emoji} ${escapeHtml(reward.title)} ${escapeHtml(reward.extra || '')}</span></div>
+          <div class="quiz-topic-grid">
+            <div><small>🔢 Participations</small><strong>${rows.length}</strong></div>
+            <div><small>📈 Moyenne</small><strong>${formatNoteSur20(topicAvg)}/20</strong></div>
+            <div><small>⭐ Meilleure</small><strong>${formatNoteSur20(best)}/20</strong></div>
+            <div><small>📉 Plus faible</small><strong>${formatNoteSur20(low)}/20</strong></div>
+            <div><small>🔥 Série</small><strong>${topicStreak}</strong></div>
+            <div><small>🎯 Réussite</small><strong>${topicSuccess}%</strong></div>
+          </div>
+          <div class="quiz-history"><span>📝 Historique :</span>${history}</div>
+          <div class="quiz-encouragement">💬 ${escapeHtml(reward.message)} <em>${getPerformanceLabel(topicAvg)}</em></div>
+          <div class="quiz-progress"><span style="width:${Math.max(0, Math.min(100, progress))}%"></span></div>
+        </article>`;
+    }).join('') : '<div class="notice">Aucun sujet trouvé pour cette matière.</div>';
+
+    const ranking = topicNames.map((topic) => {
+      const rows = filtered.filter((e) => normalizeKey(e.topic) === normalizeKey(topic));
+      const topicNotes = rows.map((e) => Number(e.note20 || 0));
+      const topicAvg = average(topicNotes);
+      const best = topicNotes.length ? Math.max(...topicNotes) : 0;
+      const topicSuccess = rows.length ? Math.round((rows.filter((e) => Number(e.note20 || 0) >= 10).length / rows.length) * 100) : 0;
+      const topicStreak = longestSuccessStreak(rows);
+      return { topic, rows, topicAvg, best, topicSuccess, topicStreak, score: topicAvg * 5 + topicSuccess * 0.25 + rows.length * 1.5 + best * 2 + topicStreak * 3 };
+    }).sort((a, b) => b.score - a.score).slice(0, 8);
+    const rankingHtml = ranking.length ? ranking.map((r, i) => `
+      <div class="quiz-rank-row"><strong>${i + 1}. ${escapeHtml(r.topic)}</strong><span>${formatNoteSur20(r.topicAvg)}/20 • ${r.topicSuccess}% • ${r.rows.length} participation(s) • meilleure ${formatNoteSur20(r.best)}</span></div>`).join('') : '<p class="muted">Le classement apparaîtra après les premiers quiz.</p>';
+
+    els.quizDashboardContent.innerHTML = `
+      ${statsHtml}
+      <section class="quiz-dashboard-panel"><h3>📈 Graphique d’évolution des notes</h3>${makeSparkline(filtered)}</section>
+      <section class="quiz-dashboard-panel"><h3>🏅 Classement général des meilleurs sujets</h3>${rankingHtml}</section>
+      <section class="quiz-dashboard-panel"><h3>📚 Suivi par sujet</h3><div class="quiz-topic-list">${topicCards}</div></section>
+    `;
+  }
+
+  function renderQuizSettings() {
+    if (!els.quizSettingsContent) return;
+    const user = localStorage.getItem(STORAGE_KEYS.user) || '';
+    if (!isSimpleUser(user)) {
+      els.quizSettingsContent.innerHTML = '<div class="notice">Cette page est réservée aux comptes utilisateurs simples. Les administrateurs gardent leurs paramètres dans l’espace administrateur.</div>';
+      return;
+    }
+    const localSettings = readUserQuizSettings(user);
+    const cheatCounter = getLocalCheatCounter(user);
+    const fieldHtml = QUIZ_SETTINGS_FIELDS.map((field) => `
+      <label class="quiz-setting-toggle">
+        <span><strong>${escapeHtml(field.label)}</strong><small>${escapeHtml(field.help)}</small></span>
+        <input type="checkbox" data-quiz-setting="${escapeAttr(field.key)}" ${localSettings[field.key] ? 'checked' : ''}>
+        <i aria-hidden="true"></i>
+      </label>`).join('');
+    els.quizSettingsContent.innerHTML = `
+      <div class="quiz-settings-grid">${fieldHtml}</div>
+      <div class="quiz-cheat-rules ${localSettings.cheatDetection ? '' : 'is-disabled'}">
+        <h3>Gestion des tentatives de tricherie</h3>
+        <p class="muted small">Cette fonctionnalité reste entièrement locale et n’ajoute aucun serveur.</p>
+        <ul>
+          <li>surveillance des sorties de page ;</li>
+          <li>détection du changement d’onglet ou de fenêtre ;</li>
+          <li>détection de la perte de focus pendant le quiz ;</li>
+          <li>avertissement après une tentative suspecte ;</li>
+          <li>possibilité de limiter ou bloquer la note après plusieurs tentatives ;</li>
+          <li>enregistrement local du nombre de tentatives suspectes.</li>
+        </ul>
+        <div class="quiz-cheat-counter"><strong>${cheatCounter.total}</strong><span>tentative(s) suspecte(s) enregistrée(s) localement</span><button class="btn" id="btnResetCheatCounter" type="button">Réinitialiser</button></div>
+      </div>
+      <div class="row row--space"><span class="muted small">Les choix sont sauvegardés automatiquement dans localStorage.</span><button class="btn btn--primary" id="btnSaveQuizSettingsNow" type="button">Enregistrer maintenant</button></div>
+    `;
+
+    const saveFromUI = () => {
+      const next = { ...readUserQuizSettings(user) };
+      els.quizSettingsContent.querySelectorAll('[data-quiz-setting]').forEach((input) => {
+        next[input.dataset.quizSetting] = !!input.checked;
+      });
+      const saved = writeUserQuizSettings(next, user);
+      applyUserQuizSettingsToRuntime(user);
+      const rules = els.quizSettingsContent.querySelector('.quiz-cheat-rules');
+      if (rules) rules.classList.toggle('is-disabled', !saved.cheatDetection);
+      return saved;
+    };
+
+    els.quizSettingsContent.querySelectorAll('[data-quiz-setting]').forEach((input) => {
+      input.addEventListener('change', saveFromUI);
+    });
+    document.getElementById('btnSaveQuizSettingsNow')?.addEventListener('click', () => {
+      saveFromUI();
+      alert('Paramètres des quiz enregistrés localement.');
+    });
+    document.getElementById('btnResetCheatCounter')?.addEventListener('click', () => {
+      resetLocalCheatCounter(user);
+      renderQuizSettings();
+    });
+  }
+
   function currentAuthPayload(extra = {}) {
     return {
       username: localStorage.getItem(STORAGE_KEYS.user) || "",
@@ -1199,6 +1640,7 @@
     freeTrialSessionActive = false;
     localStorage.removeItem(STORAGE_KEYS.user);
     localStorage.removeItem(STORAGE_KEYS.sessionToken);
+    localStorage.removeItem(STORAGE_KEYS.accountType);
   }
 
   async function checkCurrentSession() {
@@ -1277,6 +1719,7 @@
     applyManualLocalUserInfo(username);
     const freeTrial = username === FREE_TRIAL_USER || isFreeTrialUser(username);
     freeTrialSessionActive = freeTrial;
+    await loadAppSettingsFromLocal();
     if (!username) {
       const msg = "Veuillez entrer votre nom d’utilisateur avant de vous connecter.";
       if (els.codeError) {
@@ -1298,6 +1741,8 @@
           window.USERS[username] = data.userConfig;
         }
         localStorage.setItem(STORAGE_KEYS.user, username);
+        persistAccountType(username);
+        applyUserQuizSettingsToRuntime(username);
         startSessionHeartbeat(username);
       } catch (e) {
         const msg = e.data?.error || e.message || "Connexion refusée.";
@@ -1310,6 +1755,13 @@
         return false;
       }
     }
+
+    if (freeTrial) {
+      localStorage.setItem(STORAGE_KEYS.user, FREE_TRIAL_USER);
+      localStorage.setItem(STORAGE_KEYS.sessionToken, getSessionToken());
+    }
+    persistAccountType(username);
+    applyUserQuizSettingsToRuntime(username);
 
     if (els.screenCode) els.screenCode.classList.add("hidden");
     document.body.classList.remove("qdash-login-view");
@@ -1333,11 +1785,22 @@
     if (els.btnDictionary) els.btnDictionary.style.display = "";
     if (els.btnReset) els.btnReset.classList.add("hidden");
 
-    if (!freeTrial && els.btnAdmin && window.ADMINS && window.ADMINS.includes(username)) {
+    const isAdminAccount = !freeTrial && isAdminUsername(username);
+    if (els.btnQuizDashboard) {
+      els.btnQuizDashboard.classList.toggle("hidden", freeTrial);
+      els.btnQuizDashboard.style.display = freeTrial ? "none" : "";
+    }
+    if (els.btnQuizSettings) {
+      const showQuizSettings = !freeTrial && !isAdminAccount;
+      els.btnQuizSettings.classList.toggle("hidden", !showQuizSettings);
+      els.btnQuizSettings.style.display = showQuizSettings ? "" : "none";
+    }
+    if (isAdminAccount && els.btnAdmin) {
       els.btnAdmin.classList.remove("hidden");
     } else if (els.btnAdmin) {
       els.btnAdmin.classList.add("hidden");
     }
+    window.dispatchEvent(new CustomEvent('qdash:session-changed', { detail: { user: username, accountType: localStorage.getItem(STORAGE_KEYS.accountType) || '' } }));
     return true;
   }
 
@@ -1355,6 +1818,16 @@
       els.codeError.textContent = "";
     }
     if (els.currentUser) els.currentUser.textContent = "";
+    if (els.btnQuizDashboard) {
+      els.btnQuizDashboard.classList.add("hidden");
+      els.btnQuizDashboard.style.display = "none";
+    }
+    if (els.btnQuizSettings) {
+      els.btnQuizSettings.classList.add("hidden");
+      els.btnQuizSettings.style.display = "none";
+    }
+    if (els.btnAdmin) els.btnAdmin.classList.add("hidden");
+    window.dispatchEvent(new CustomEvent('qdash:session-changed', { detail: { user: '', accountType: '' } }));
   }
 
   function normalizeAccountLevel(level) {
@@ -3159,6 +3632,8 @@
       els.screenAdmin,
       els.screenDictionary,
       els.screenResumes,
+      els.screenQuizDashboard,
+      els.screenQuizSettings,
     ].filter(Boolean);
     for (const s of screens) s.classList.add("hidden");
     which.classList.remove("hidden");
@@ -4848,6 +5323,10 @@ Les réponses données après cette tentative n’ont pas été prises en compte
     renderResultSummaryWithFeedback(els.scoreText, result, cheatText);
     const user = localStorage.getItem(STORAGE_KEYS.user);
     logActivity(user, 'finish_quiz', { correct, answered, total, percentage: pct, score, note20, autoSubmit: !!session.autoCheatSubmitted, autoSubmitInfo: session.autoCheatSubmitted || null });
+    if (!session.dashboardSavedAt) {
+      saveQuizDashboardResult(result);
+      session.dashboardSavedAt = Date.now();
+    }
     localStorage.setItem(
   STORAGE_KEYS.lastResult,
   JSON.stringify({
@@ -4987,6 +5466,7 @@ els.reviewList.appendChild(head);
   }
 
   async function startNewSession() {
+    applyUserQuizSettingsToRuntime();
     if (isFreeTrialUser()) {
       // Ne pas bloquer l'essai gratuit à cause d'anciens sélecteurs restés en cache.
       renderFreeTrialStartInfo();
@@ -5180,6 +5660,7 @@ els.reviewList.appendChild(head);
         });
       };
 
+      applyUserQuizSettingsToRuntime();
       if (isFreeTrialUser()) {
         if (level !== FREE_TRIAL_LEVEL || subject !== FREE_TRIAL_SUBJECT) {
           alert(FREE_TRIAL_BLOCK_MESSAGE);
@@ -5361,6 +5842,57 @@ els.reviewList.appendChild(head);
       updateStartInfo();
     });
   }
+
+  if (els.btnQuizDashboard) {
+    els.btnQuizDashboard.addEventListener("click", () => {
+      if (!(localStorage.getItem(STORAGE_KEYS.user) || '') || isFreeTrialUser()) return;
+      document.body.classList.remove("qdash-dashboard-view", "qdash-quiz-view");
+      renderQuizDashboard();
+      showScreen(els.screenQuizDashboard);
+    });
+  }
+
+  if (els.btnRefreshQuizDashboard) {
+    els.btnRefreshQuizDashboard.addEventListener("click", renderQuizDashboard);
+  }
+
+  if (els.dashboardSubjectSelect) {
+    els.dashboardSubjectSelect.addEventListener("change", () => {
+      localStorage.setItem(STORAGE_KEYS.quizDashboardSubject, els.dashboardSubjectSelect.value || '');
+      renderQuizDashboard();
+    });
+  }
+
+  if (els.btnBackToStartFromQuizDashboard) {
+    els.btnBackToStartFromQuizDashboard.addEventListener("click", () => {
+      showScreen(els.screenStart);
+      if (currentMode === "normal") updateStartInfo();
+      else updateDEStartInfo();
+    });
+  }
+
+  if (els.btnQuizSettings) {
+    els.btnQuizSettings.addEventListener("click", () => {
+      if (!isSimpleUser()) {
+        alert('Les paramètres des quiz sont réservés aux comptes utilisateurs simples.');
+        return;
+      }
+      renderQuizSettings();
+      showScreen(els.screenQuizSettings);
+    });
+  }
+
+  if (els.btnBackToStartFromQuizSettings) {
+    els.btnBackToStartFromQuizSettings.addEventListener("click", () => {
+      showScreen(els.screenStart);
+      if (currentMode === "normal") updateStartInfo();
+      else updateDEStartInfo();
+    });
+  }
+
+  window.addEventListener('quizDashboardUpdated', () => {
+    if (els.screenQuizDashboard && !els.screenQuizDashboard.classList.contains('hidden')) renderQuizDashboard();
+  });
 
   if (els.btnAdmin) {
     els.btnAdmin.addEventListener("click", async () => {

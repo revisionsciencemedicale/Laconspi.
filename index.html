@@ -61,6 +61,8 @@
           </div>
           <button class="btn btn--ghost" id="btnDictionary" type="button">Dictionnaire médical</button>
           <button class="btn btn--ghost" id="btnResumes" type="button">Résumés de Cours</button>
+          <button class="btn btn--ghost hidden" id="btnQuizDashboard" type="button">Tableau de bord des quiz</button>
+          <button class="btn btn--ghost hidden" id="btnQuizSettings" type="button">Paramètres des quiz</button>
           <button class="btn btn--ghost hidden" id="btnAdmin" type="button">⚙️ Paramètres</button>
           <button class="btn btn--ghost hidden" id="btnReset" type="button" title="Reprendre le quiz en cours avec un nouvel ordre">Réinitialiser</button>
         </div>
@@ -214,6 +216,35 @@
           </div>
         </div>
         <div class="resume-view" id="resumeView"></div>
+      </section>
+
+      <section class="card hidden quiz-dashboard-screen" id="screenQuizDashboard" aria-labelledby="quizDashboardTitle">
+        <div class="row row--space">
+          <div>
+            <h2 id="quizDashboardTitle" class="h2">📊 Tableau de bord des quiz</h2>
+            <p class="muted small" style="margin-top:-4px">Suivi local des participations, notes, récompenses, séries et progression.</p>
+          </div>
+          <button class="btn" id="btnBackToStartFromQuizDashboard" type="button">Accueil</button>
+        </div>
+        <div class="quiz-dashboard-toolbar">
+          <div class="field">
+            <label for="dashboardSubjectSelect" class="label">Matière</label>
+            <select id="dashboardSubjectSelect" class="select"></select>
+          </div>
+          <button class="btn btn--primary" id="btnRefreshQuizDashboard" type="button">Actualiser</button>
+        </div>
+        <div id="quizDashboardContent" class="quiz-dashboard-content" aria-live="polite"></div>
+      </section>
+
+      <section class="card hidden quiz-settings-screen" id="screenQuizSettings" aria-labelledby="quizSettingsTitle">
+        <div class="row row--space">
+          <div>
+            <h2 id="quizSettingsTitle" class="h2">Paramètres des quiz</h2>
+            <p class="muted small" style="margin-top:-4px">Ces choix sont enregistrés localement pour ton compte simple.</p>
+          </div>
+          <button class="btn" id="btnBackToStartFromQuizSettings" type="button">Accueil</button>
+        </div>
+        <div id="quizSettingsContent" class="quiz-settings-content" aria-live="polite"></div>
       </section>
     </main>
 
